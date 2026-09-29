@@ -52,35 +52,23 @@ const SLIPS_DIR = path.join(PUBLIC_DIR, 'slips');
 fs.mkdirSync(SLIPS_DIR, { recursive: true });
 
 // ============================================================
-//  ✅ CORS สำหรับ Capacitor — สำคัญมาก!
+//  ✅ CORS — รองรับ Capacitor + Render
 // ============================================================
 app.set('trust proxy', 1);
 
-const ALLOWED_ORIGINS = [
-  'capacitor://localhost',
-  'ionic://localhost',
-  'https://localhost',
-  'http://localhost',
-  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : []),
-];
-
 app.use(cors({
-  origin(origin, cb) {
-    if (!origin) return cb(null, true);            // curl, native fetch
-    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    if (/^https?:\/\/(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))\./.test(origin)) {
-      return cb(null, true);                        // LAN
-    }
-    return cb(null, false);
-  },
+  origin: true,               // ✅ สะท้อน origin กลับมา (รองรับทุก origin)
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Set-Cookie'],
+  maxAge: 86400,
 }));
+
+app.options('*', cors({ origin: true, credentials: true }));
 
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
-app.use(express.static(PUBLIC_DIR, { dotfiles: 'deny', index: 'index.html' }));
 
 // ============================================================
 //  Multer
@@ -95,76 +83,10 @@ const upload = multer({
 });
 
 // ============================================================
-//  ✅ Helpers: safe row
+//  Static — เปิดให้เข้าถึงสลิปเท่านั้น
 // ============================================================
-function safeUser(u) {
-  if (!u) return null;
-  return {
-    id: Number(u.id),
-    username: u.username,
-    password_hash: u.password_hash,
-    salt: u.salt,
-    created_at: Number(u.created_at) || 0,
-    expires_at: Number(u.expires_at) || 0,
-    is_admin: u.is_admin ? 1 : 0,
-    payment_status: u.payment_status,
-    payment_ref: u.payment_ref,
-    payment_expires_at: u.payment_expires_at ? Number(u.payment_expires_at) : null,
-    last_slip_url: u.last_slip_url,
-  };
-}
-
-function safeIntent(pi) {
-  if (!pi) return null;
-  return {
-    id: Number(pi.id),
-    ref: pi.ref,
-    user_id: Number(pi.user_id),
-    username: pi.username,
-    amount: Number(pi.amount) || 0,
-    status: pi.status,
-    created_at: Number(pi.created_at) || 0,
-    expires_at: Number(pi.expires_at) || 0,
-    paid_at: pi.paid_at ? Number(pi.paid_at) : null,
-    slip_qr_payload: pi.slip_qr_payload,
-    slip_image_url: pi.slip_image_url,
-    reject_reason: pi.reject_reason,
-    detected_name: pi.detected_name,
-    detected_time: pi.detected_time,
-    ocr_text: pi.ocr_text,
-    admin_note: pi.admin_note,
-  };
-}
-
-const hashPw = (pw, salt) => crypto.scryptSync(pw, salt, 64).toString('hex');
-const newToken = () => crypto.randomBytes(32).toString('hex');
-const newRef = () =>
-  'FD' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase();
-
-async function getUserFromReq(req) {
-  let token = req.cookies?.session;
-  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
-    token = req.headers.authorization.slice(7);
-  }
-  if (!token) return null;
-  const r = await db.execute({
-    sql: `SELECT u.*, s.expires_at AS session_exp
-          FROM sessions s JOIN users u ON u.id = s.user_id
-          WHERE s.token = ? AND s.expires_at > ?`,
-    args: [token, Date.now()],
-  });
-  return safeUser(r.rows[0]);
-}
-
-function setSessionCookie(res, token, maxAgeMs) {
-  res.cookie('session', token, {
-    httpOnly: true,
-    sameSite: IS_PROD ? 'none' : 'lax',
-    secure: IS_PROD,
-    maxAge: maxAgeMs,
-    path: '/',
-  });
-}
+app.use('/slips', express.static(SLIPS_DIR, { dotfiles: 'deny' }));
+app.use('/qr-payment.png', express.static(path.join(PUBLIC_DIR, 'qr-payment.png')));
 
 // ============================================================
 //  DB Init
@@ -245,24 +167,92 @@ async function initDB() {
 }
 
 // ============================================================
-//  createOrGetPendingIntent
+//  Helpers
 // ============================================================
+const hashPw = (pw, salt) => crypto.scryptSync(pw, salt, 64).toString('hex');
+const newToken = () => crypto.randomBytes(32).toString('hex');
+const newRef = () =>
+  'FD' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase();
+
+function toSafeUser(u) {
+  if (!u) return null;
+  return {
+    id: Number(u.id),
+    username: u.username,
+    password_hash: u.password_hash,
+    salt: u.salt,
+    created_at: Number(u.created_at) || 0,
+    expires_at: Number(u.expires_at) || 0,
+    is_admin: u.is_admin ? 1 : 0,
+    payment_status: u.payment_status,
+    payment_ref: u.payment_ref,
+    payment_expires_at: u.payment_expires_at ? Number(u.payment_expires_at) : null,
+    last_slip_url: u.last_slip_url,
+  };
+}
+
+function toSafeIntent(pi) {
+  if (!pi) return null;
+  return {
+    id: Number(pi.id),
+    ref: pi.ref,
+    user_id: Number(pi.user_id),
+    username: pi.username,
+    amount: Number(pi.amount) || 0,
+    status: pi.status,
+    created_at: Number(pi.created_at) || 0,
+    expires_at: Number(pi.expires_at) || 0,
+    paid_at: pi.paid_at ? Number(pi.paid_at) : null,
+    slip_qr_payload: pi.slip_qr_payload,
+    slip_image_url: pi.slip_image_url,
+    reject_reason: pi.reject_reason,
+    detected_name: pi.detected_name,
+    detected_time: pi.detected_time,
+    ocr_text: pi.ocr_text,
+    admin_note: pi.admin_note,
+  };
+}
+
+async function getUserFromReq(req) {
+  // ✅ รองรับทั้ง cookie และ Bearer token
+  let token = req.cookies?.session;
+  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.slice(7);
+  }
+  if (!token) return null;
+  const r = await db.execute({
+    sql: `SELECT u.*, s.expires_at AS session_exp
+          FROM sessions s JOIN users u ON u.id = s.user_id
+          WHERE s.token = ? AND s.expires_at > ?`,
+    args: [token, Date.now()],
+  });
+  return toSafeUser(r.rows[0]);
+}
+
+function setSessionCookie(res, token, maxAgeMs) {
+  res.cookie('session', token, {
+    httpOnly: true,
+    sameSite: IS_PROD ? 'none' : 'lax',
+    secure: IS_PROD,
+    maxAge: maxAgeMs,
+    path: '/',
+  });
+}
+
 async function createOrGetPendingIntent(user) {
   const now = Date.now();
-
   await db.execute({
     sql: `UPDATE payment_intents SET status='expired'
           WHERE user_id=? AND status='pending' AND expires_at <= ?`,
     args: [user.id, now],
   });
-
   const cur = await db.execute({
     sql: `SELECT * FROM payment_intents
           WHERE user_id=? AND status='pending' AND expires_at > ?
           ORDER BY id DESC LIMIT 1`,
     args: [user.id, now],
   });
-  if (cur.rows.length > 0) return safeIntent(cur.rows[0]);
+  if (cur.rows.length > 0) return toSafeIntent(cur.rows[0]);
 
   const ref = newRef();
   const payExp = now + PAYMENT_WINDOW_MS;
@@ -276,7 +266,7 @@ async function createOrGetPendingIntent(user) {
     args: [ref, payExp, user.id],
   });
   const r = await db.execute({ sql: `SELECT * FROM payment_intents WHERE ref=?`, args: [ref] });
-  return safeIntent(r.rows[0]);
+  return toSafeIntent(r.rows[0]);
 }
 
 // ============================================================
@@ -352,7 +342,7 @@ app.post('/api/login', async (req, res) => {
   if (r.rows.length === 0)
     return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
 
-  const u = safeUser(r.rows[0]);
+  const u = toSafeUser(r.rows[0]);
   if (hashPw(password, u.salt) !== u.password_hash)
     return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
 
@@ -483,7 +473,7 @@ app.get('/api/payment/status', async (req, res) => {
   });
   if (r.rows.length === 0) return res.json({ ok: true, paid: false });
 
-  const pi = safeIntent(r.rows[0]);
+  const pi = toSafeIntent(r.rows[0]);
   res.json({
     ok: true,
     paid: pi.status === 'paid',
@@ -525,7 +515,7 @@ app.post('/api/payment/upload-slip', upload.single('slip'), async (req, res) => 
     });
     if (pi.rows.length === 0) return res.json({ ok: false, msg: 'ไม่พบรายการชำระเงิน' });
 
-    const intent = safeIntent(pi.rows[0]);
+    const intent = toSafeIntent(pi.rows[0]);
     const now = Date.now();
 
     if (intent.status === 'paid') return res.json({ ok: true, paid: true, msg: 'ชำระแล้ว' });
@@ -634,7 +624,7 @@ app.post('/api/payment/upload-slip', upload.single('slip'), async (req, res) => 
       args: [userExpiry, u.id],
     });
 
-    console.log(`✅ อนุมัติสลิป: ${u.username} (ref=${ref}) — หมดอายุ ${new Date(userExpiry).toLocaleString('th-TH')}`);
+    console.log(`✅ อนุมัติ: ${u.username} — หมดอายุ ${new Date(userExpiry).toLocaleString('th-TH')}`);
     res.json({ ok: true, paid: true, msg: '✅ ตรวจสอบสลิปสำเร็จ!', expires_at: Number(userExpiry) });
   } catch (e) {
     console.error('verify-slip error:', e);
@@ -669,13 +659,6 @@ app.get('/api/admin/users', requireAdmin, async (_req, res) => {
   res.json(rows);
 });
 
-app.get('/api/admin/payments', requireAdmin, async (_req, res) => {
-  const r = await db.execute(
-    `SELECT * FROM payment_intents ORDER BY created_at DESC LIMIT 200`
-  );
-  res.json(r.rows.map(x => safeIntent(x)));
-});
-
 app.get('/api/admin/users/:id/slips', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const r = await db.execute({
@@ -687,7 +670,7 @@ app.get('/api/admin/users/:id/slips', requireAdmin, async (req, res) => {
           ORDER BY id DESC`,
     args: [id],
   });
-  res.json(r.rows.map(x => safeIntent(x)));
+  res.json(r.rows.map(x => toSafeIntent(x)));
 });
 
 app.post('/api/admin/payments/:id/note', requireAdmin, async (req, res) => {
@@ -695,7 +678,6 @@ app.post('/api/admin/payments/:id/note', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (typeof note !== 'string' || note.length > 500)
     return res.status(400).json({ error: 'หมายเหตุไม่ถูกต้อง' });
-
   await db.execute({
     sql: 'UPDATE payment_intents SET admin_note=? WHERE id=?',
     args: [note, id],
@@ -901,7 +883,7 @@ initDB()
   .then(() => {
     app.listen(PORT, () => {
       console.log(`🚀 drice-miter → http://localhost:${PORT}`);
-      console.log(`📱 ALLOWED_ORIGINS: ${ALLOWED_ORIGINS.join(', ')}`);
+      console.log(`🌐 NODE_ENV = ${process.env.NODE_ENV || 'development'}`);
     });
   })
   .catch((e) => {
