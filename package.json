@@ -1,0 +1,23 @@
+{
+  "name": "drice-miter",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "ระบบตรวจจับเสียงตามย่านความถี่ + สมาชิก 24 ชม. + QR 500 บาท + ตรวจสลิป",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.14.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "jimp": "^1.6.1",
+    "jsqr": "^1.4.0",
+    "multer": "^2.4.0",
+    "tesseract.js": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
