@@ -222,9 +222,12 @@ tr.expired{background:rgba(255,68,68,.04)}
 
       <button id="btnManualAuth" class="btn sec" style="margin-top:12px">📘 คู่มือการใช้งาน</button>
 
-      <div class="note">
+            <div class="note">
         สมาชิกใหม่ <strong style="color:var(--ac)">500 บาท / 24 ชั่วโมง</strong><br>
-        ชำระผ่าน QR → อัพสลิป → ใช้งานได้ทันที
+        ชำระผ่าน QR → อัพสลิป → ใช้งานได้ทันที<br>
+        <span style="color:var(--er);font-size:.72rem;display:block;margin-top:6px">
+          ⚠️ สมัครแล้วไม่ชำระภายใน 15 นาที บัญชีจะถูกลบอัตโนมัติ
+        </span>
       </div>
     </div>
   </div>
@@ -362,12 +365,17 @@ tr.expired{background:rgba(255,68,68,.04)}
       <div class="stat"><div class="num" id="statExpired">0</div><div class="lbl2">หมดอายุ</div></div>
     </div>
 
-    <div class="toolbar">
+        <div class="toolbar">
       <strong>รายชื่อผู้ใช้</strong>
+      <span id="idWarning" style="color:var(--er);font-size:.75rem;display:none">
+        ⚠️ ID มีเลขกระโดด — กดปุ่ม "เรียง ID" เพื่อแก้ไข
+      </span>
       <div>
         <input id="searchBox" placeholder="ค้นหาชื่อ..."
                style="padding:6px 10px;background:var(--card2);color:var(--tx);border:1px solid var(--bd);border-radius:3px;font:inherit;font-size:.85rem">
         <button class="btn sec sm" id="btnRefresh">รีเฟรช</button>
+        <button class="btn sm" id="btnResetIds"
+                style="background:#ff8c00;color:#000;border:none;font-weight:700">🔄 เรียง ID</button>
       </div>
     </div>
 
@@ -1151,7 +1159,7 @@ function renderUsers() {
           <button class="btn sm danger" data-act="del" data-id="${u.id}" data-name="${escapeHtml(u.username)}">ลบ</button>
         </div>`;
 
-    return `<tr class="${rowClass}" data-id="${u.id}">
+        return `<tr class="${rowClass}" data-id="${u.id}">
       <td data-label="ID">${u.id}</td>
       <td data-label="ชื่อผู้ใช้" class="col-user">${escapeHtml(u.username)}${adminTag}${payTag}</td>
       <td data-label="สมัครเมื่อ" class="col-created">${fmtThai(u.created_at)}</td>
@@ -1161,6 +1169,9 @@ function renderUsers() {
       <td data-label="จัดการ" class="col-actions">${actionBtns}</td>
     </tr>`;
   }).join('');
+
+  // ✅ ตรวจ ID กระโดด
+  checkIdGaps();
 }
 
 function tickCountdowns() {
@@ -1339,6 +1350,40 @@ $('mOk').onclick = async () => {
 
 $('btnRefresh').onclick = () => loadUsers();
 $('searchBox').oninput = renderUsers;
+
+// ✅ ตรวจ ID กระโดด
+function checkIdGaps() {
+  const el = $('idWarning');
+  if (!el) return;
+  if (!adminUsers.length) { el.style.display = 'none'; return; }
+
+  const ids = adminUsers.map(u => u.id).sort((a, b) => a - b);
+  let hasGaps = false;
+  for (let i = 1; i < ids.length; i++) {
+    if (ids[i] !== ids[i - 1] + 1) { hasGaps = true; break; }
+  }
+  if (ids[0] !== 1) hasGaps = true;
+
+  el.style.display = hasGaps ? 'inline' : 'none';
+}
+
+// ✅ ปุ่ม Reset ID
+$('btnResetIds').onclick = async () => {
+  if (!confirm('🔄 เรียง ID ใหม่ให้เป็น 1, 2, 3, 4, ... ?\n\n⚠️ User ที่ login อยู่จะต้อง login ใหม่')) return;
+  const btn = $('btnResetIds');
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังเรียง...';
+  try {
+    const j = await api('POST', '/api/admin/reset-ids');
+    toast(j.msg || 'เรียง ID สำเร็จ');
+    await loadUsers();
+  } catch (e) {
+    toast('ผิดพลาด: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 เรียง ID';
+  }
+};
 
 $('btnAdminLogout').onclick = async () => {
   clearInterval(adminTimer);
