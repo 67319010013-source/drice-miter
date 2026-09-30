@@ -37,6 +37,10 @@ const EXPECTED_NAME = (process.env.RECEIVER_NAME || '').trim();
 const EXPECTED_NAME_EN = (process.env.RECEIVER_NAME_EN || '').trim();
 const EXPECTED_LAST4 = (process.env.RECEIVER_ACCOUNT_LAST4 || '').trim();
 
+// ✅ Auto-cleanup config
+const UNPAID_DELETE_MIN = Number(process.env.UNPAID_DELETE_MIN || 15);
+const EXPIRED_DELETE_DAYS = Number(process.env.EXPIRED_DELETE_DAYS || 7);
+
 if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) {
   console.error('❌ ต้องตั้งค่า TURSO_DATABASE_URL และ TURSO_AUTH_TOKEN');
   process.exit(1);
@@ -57,7 +61,7 @@ fs.mkdirSync(SLIPS_DIR, { recursive: true });
 app.set('trust proxy', 1);
 
 app.use(cors({
-  origin: true,               // ✅ สะท้อน origin กลับมา (รองรับทุก origin)
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -83,7 +87,7 @@ const upload = multer({
 });
 
 // ============================================================
-//  Static — เปิดให้เข้าถึงสลิปเท่านั้น
+//  Static
 // ============================================================
 app.use('/slips', express.static(SLIPS_DIR, { dotfiles: 'deny' }));
 app.use('/qr-payment.png', express.static(path.join(PUBLIC_DIR, 'qr-payment.png')));
@@ -130,6 +134,7 @@ async function initDB() {
     `CREATE INDEX IF NOT EXISTS idx_pay_ref       ON payment_intents(ref)`,
     `CREATE INDEX IF NOT EXISTS idx_pay_user      ON payment_intents(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_pay_qr        ON payment_intents(slip_qr_payload)`,
+    `CREATE INDEX IF NOT EXISTS idx_users_cleanup ON users(is_admin, payment_status, created_at, expires_at)`,
   ]);
 
   const alters = [
@@ -214,7 +219,6 @@ function toSafeIntent(pi) {
 }
 
 async function getUserFromReq(req) {
-  // ✅ รองรับทั้ง cookie และ Bearer token
   let token = req.cookies?.session;
   if (!token && req.headers.authorization?.startsWith('Bearer ')) {
     token = req.headers.authorization.slice(7);
@@ -744,8 +748,8 @@ app.post('/api/admin/users/:id/approve-payment', requireAdmin, async (req, res) 
     args: [now, id],
   });
   await db.execute({
-    sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
-    args: [newExp, id],
+    sql: 'DELETE FROM sessions WHERE user_id=?',
+    args: [id],
   });
 
   res.json({ ok: true, expires_at: Number(newExp) });
@@ -770,9 +774,10 @@ app.post('/api/admin/users/:id/extend', requireAdmin, async (req, res) => {
 
   await db.execute({ sql: 'UPDATE users SET expires_at=? WHERE id=?', args: [newExp, id] });
   await db.execute({
-    sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
-    args: [newExp, id],
+    sql: 'DELETE FROM sessions WHERE user_id=?',
+    args: [id],
   });
+
   res.json({ ok: true, expires_at: Number(newExp) });
 });
 
@@ -807,8 +812,8 @@ app.post('/api/admin/users/:id/set-time', requireAdmin, async (req, res) => {
     });
   }
   await db.execute({
-    sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
-    args: [expires_at, id],
+    sql: 'DELETE FROM sessions WHERE user_id=?',
+    args: [id],
   });
 
   res.json({ ok: true, expires_at: Number(expires_at) });
@@ -845,17 +850,119 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
-//  Auto-expire
+//  ✅ Reset IDs — เรียง 1,2,3,4,...
+// ============================================================
+app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
+  try {
+    const r = await db.execute(
+      `SELECT id, username FROM users ORDER BY id ASC`
+    );
+
+    if (r.rows.length === 0) {
+      return res.json({ ok: true, msg: 'ไม่มีผู้ใช้', count: 0 });
+    }
+
+    const users = r.rows.map(u => ({ id: Number(u.id), username: u.username }));
+    const updates = [];
+    for (let i = 0; i < users.length; i++) {
+      const expectedId = i + 1;
+      if (users[i].id !== expectedId) {
+        updates.push({ oldId: users[i].id, newId: expectedId });
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.json({ ok: true, msg: 'ID เรียงถูกต้องอยู่แล้ว', count: 0 });
+    }
+
+    // Step 1: ย้าย id ติดลบชั่วคราว
+    for (const { oldId } of updates) {
+      const tempId = -oldId;
+      await db.execute({ sql: 'UPDATE users SET id=? WHERE id=?', args: [tempId, oldId] });
+      await db.execute({ sql: 'UPDATE sessions SET user_id=? WHERE user_id=?', args: [tempId, oldId] });
+      await db.execute({ sql: 'UPDATE payment_intents SET user_id=? WHERE user_id=?', args: [tempId, oldId] });
+    }
+
+    // Step 2: ย้ายจากติดลบ → ค่าจริง
+    for (const { oldId, newId } of updates) {
+      const tempId = -oldId;
+      await db.execute({ sql: 'UPDATE users SET id=? WHERE id=?', args: [newId, tempId] });
+      await db.execute({ sql: 'UPDATE sessions SET user_id=? WHERE user_id=?', args: [newId, tempId] });
+      await db.execute({ sql: 'UPDATE payment_intents SET user_id=? WHERE user_id=?', args: [newId, tempId] });
+    }
+
+    // Step 3: reset sequence
+    const maxR = await db.execute('SELECT MAX(id) AS max_id FROM users');
+    const maxId = Number(maxR.rows[0]?.max_id || 0);
+
+    try {
+      await db.execute({ sql: `DELETE FROM sqlite_sequence WHERE name='users'` });
+      await db.execute({
+        sql: `INSERT INTO sqlite_sequence (name, seq) VALUES ('users', ?)`,
+        args: [maxId],
+      });
+    } catch (e) {
+      console.warn('reset sequence:', e.message);
+    }
+
+    console.log(`✅ Reset IDs สำเร็จ: ${updates.length} users`);
+    res.json({ ok: true, msg: `เรียง ID ใหม่ ${updates.length} รายการ`, count: updates.length });
+  } catch (e) {
+    console.error('reset-ids error:', e);
+    res.status(500).json({ error: 'Reset ID ไม่สำเร็จ: ' + e.message });
+  }
+});
+
+// ============================================================
+//  ✅ Auto-expire + Auto-cleanup
 // ============================================================
 setInterval(async () => {
   try {
+    const now = Date.now();
+
+    // 1) Expire pending
     await db.execute({
       sql: `UPDATE payment_intents SET status='expired'
             WHERE status='pending' AND expires_at < ?`,
-      args: [Date.now()],
+      args: [now],
     });
+
+    // 2) ลบ user ไม่จ่ายภายใน 15 นาที
+    const unpaidCutoff = now - (UNPAID_DELETE_MIN * 60 * 1000);
+    const unpaidList = await db.execute({
+      sql: `SELECT id, username FROM users
+            WHERE is_admin = 0
+              AND payment_status != 'paid'
+              AND created_at < ?`,
+      args: [unpaidCutoff],
+    });
+    for (const u of unpaidList.rows) {
+      const uid = Number(u.id);
+      console.log(`🗑️ ลบ user (ไม่จ่าย ${UNPAID_DELETE_MIN} นาที): ${u.username} (id=${uid})`);
+      await db.execute({ sql: 'DELETE FROM sessions WHERE user_id=?', args: [uid] });
+      await db.execute({ sql: 'DELETE FROM payment_intents WHERE user_id=?', args: [uid] });
+      await db.execute({ sql: 'DELETE FROM users WHERE id=?', args: [uid] });
+    }
+
+    // 3) ลบ user หมดอายุเกิน 7 วัน
+    const expiredCutoff = now - (EXPIRED_DELETE_DAYS * 24 * 60 * 60 * 1000);
+    const expiredList = await db.execute({
+      sql: `SELECT id, username FROM users
+            WHERE is_admin = 0
+              AND payment_status = 'paid'
+              AND expires_at < ?`,
+      args: [expiredCutoff],
+    });
+    for (const u of expiredList.rows) {
+      const uid = Number(u.id);
+      console.log(`🗑️ ลบ user (หมดอายุเกิน ${EXPIRED_DELETE_DAYS} วัน): ${u.username} (id=${uid})`);
+      await db.execute({ sql: 'DELETE FROM sessions WHERE user_id=?', args: [uid] });
+      await db.execute({ sql: 'DELETE FROM payment_intents WHERE user_id=?', args: [uid] });
+      await db.execute({ sql: 'DELETE FROM users WHERE id=?', args: [uid] });
+    }
+
   } catch (e) {
-    console.error('auto-expire error:', e);
+    console.error('auto-cleanup error:', e);
   }
 }, 60 * 1000);
 
@@ -884,6 +991,7 @@ initDB()
     app.listen(PORT, () => {
       console.log(`🚀 drice-miter → http://localhost:${PORT}`);
       console.log(`🌐 NODE_ENV = ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🧹 Auto-cleanup: ไม่จ่าย ${UNPAID_DELETE_MIN} นาที / หมดอายุ ${EXPIRED_DELETE_DAYS} วัน`);
     });
   })
   .catch((e) => {
