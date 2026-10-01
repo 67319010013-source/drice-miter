@@ -850,10 +850,11 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
-//  ✅ Reset IDs — เรียง 1,2,3,4,...
+//  ✅ Reset IDs — เรียง 1,2,3,4,... (FIXED)
 // ============================================================
-app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
+app.post('/api/admin/reset-ids', requireAdmin, async (req, res) => {
   try {
+    // ✅ 1) ดึง user ทั้งหมด เรียงตาม id
     const r = await db.execute(
       `SELECT id, username FROM users ORDER BY id ASC`
     );
@@ -875,7 +876,11 @@ app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
       return res.json({ ok: true, msg: 'ID เรียงถูกต้องอยู่แล้ว', count: 0 });
     }
 
-    // Step 1: ย้าย id ติดลบชั่วคราว
+    console.log(`🔄 Reset IDs: ${updates.length} users`);
+    console.log('   Mapping:', updates.map(u => `${u.oldId}→${u.newId}`).join(', '));
+
+    // ✅ 2) Step 1: ย้าย id ทุกตารางไปเป็นค่าติดลบชั่วคราว
+    //    ⚠️ ต้องทำทุกตารางให้เสร็จก่อน ถึงจะไป Step 2 ได้
     for (const { oldId } of updates) {
       const tempId = -oldId;
       await db.execute({ sql: 'UPDATE users SET id=? WHERE id=?', args: [tempId, oldId] });
@@ -883,7 +888,7 @@ app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
       await db.execute({ sql: 'UPDATE payment_intents SET user_id=? WHERE user_id=?', args: [tempId, oldId] });
     }
 
-    // Step 2: ย้ายจากติดลบ → ค่าจริง
+    // ✅ 3) Step 2: ย้ายจากติดลบ → ค่าจริง
     for (const { oldId, newId } of updates) {
       const tempId = -oldId;
       await db.execute({ sql: 'UPDATE users SET id=? WHERE id=?', args: [newId, tempId] });
@@ -891,22 +896,53 @@ app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
       await db.execute({ sql: 'UPDATE payment_intents SET user_id=? WHERE user_id=?', args: [newId, tempId] });
     }
 
-    // Step 3: reset sequence
-    const maxR = await db.execute('SELECT MAX(id) AS max_id FROM users');
-    const maxId = Number(maxR.rows[0]?.max_id || 0);
+    // ✅ 4) Reset sqlite_sequence สำหรับ **ทุกตาราง** ที่มี AUTOINCREMENT
+    const tables = ['users', 'payment_intents'];
+    for (const t of tables) {
+      try {
+        const maxR = await db.execute(`SELECT MAX(id) AS max_id FROM ${t}`);
+        const maxId = Number(maxR.rows[0]?.max_id || 0);
 
-    try {
-      await db.execute({ sql: `DELETE FROM sqlite_sequence WHERE name='users'` });
-      await db.execute({
-        sql: `INSERT INTO sqlite_sequence (name, seq) VALUES ('users', ?)`,
-        args: [maxId],
-      });
-    } catch (e) {
-      console.warn('reset sequence:', e.message);
+        // ลบ + insert ใหม่
+        await db.execute({
+          sql: `DELETE FROM sqlite_sequence WHERE name=?`,
+          args: [t],
+        });
+        if (maxId > 0) {
+          await db.execute({
+            sql: `INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)`,
+            args: [t, maxId],
+          });
+        }
+      } catch (e) {
+        console.warn(`reset sequence ${t}:`, e.message);
+      }
+    }
+
+    // ✅ 5) ลบ session ของ admin ปัจจุบัน (บังคับ login ใหม่เพื่อความชัวร์)
+    //    เพื่อกัน session.user_id ค้าง
+    if (req.admin && req.admin.id) {
+      const adminId = Number(req.admin.id);
+      // admin ใหม่ = 1 เสมอ (เพราะเรียงจาก 1)
+      const adminNewId = 1;
+
+      // ถ้า admin เดิม id != 1 → ลบ session เก่า
+      if (adminId !== adminNewId) {
+        await db.execute({
+          sql: 'DELETE FROM sessions WHERE user_id=?',
+          args: [adminNewId],
+        });
+      }
     }
 
     console.log(`✅ Reset IDs สำเร็จ: ${updates.length} users`);
-    res.json({ ok: true, msg: `เรียง ID ใหม่ ${updates.length} รายการ`, count: updates.length });
+
+    res.json({
+      ok: true,
+      msg: `เรียง ID ใหม่ ${updates.length} รายการ — กรุณา login ใหม่`,
+      count: updates.length,
+      logout: true,   // ✅ บอก frontend ให้ logout
+    });
   } catch (e) {
     console.error('reset-ids error:', e);
     res.status(500).json({ error: 'Reset ID ไม่สำเร็จ: ' + e.message });
