@@ -122,7 +122,7 @@ tr.expired{background:rgba(255,68,68,.04)}
 .tag.admin{background:#4a90e2;color:#fff}
 .tag.unpaid{background:#666;color:#fff}
 .tag.paid{background:#16a34a;color:#fff}
-.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px}
 .stat{background:var(--card);border:1px solid var(--bd);border-radius:4px;padding:12px;text-align:center}
 .stat .num{font-size:1.5rem;font-weight:700;color:var(--ac);line-height:1.2}
 .stat .lbl2{font-size:.72rem;color:var(--mu);letter-spacing:.05em;margin-top:2px}
@@ -161,10 +161,7 @@ tr.expired{background:rgba(255,68,68,.04)}
   .admin-wrap .top { flex-direction: column; align-items: flex-start; gap: 8px; }
   .admin-wrap .top h1 { font-size: .95rem; }
   .admin-wrap .top .right { width: 100%; justify-content: flex-start; }
-    .summary {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
+  .summary { grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .stat { padding: 10px 6px; }
   .stat .num { font-size: 1.25rem; }
   .stat .lbl2 { font-size: .65rem; }
@@ -362,11 +359,10 @@ tr.expired{background:rgba(255,68,68,.04)}
       </div>
     </div>
 
-        <div class="summary">
+    <div class="summary">
       <div class="stat"><div class="num" id="statTotal">0</div><div class="lbl2">ผู้ใช้ทั้งหมด</div></div>
       <div class="stat"><div class="num" id="statActive">0</div><div class="lbl2">ใช้งานได้</div></div>
-      <div class="stat"><div class="num" id="statUnpaid" style="color:#ff8c00">0</div><div class="lbl2">ยังไม่จ่าย</div></div>
-      <div class="stat"><div class="num" id="statExpired" style="color:var(--er)">0</div><div class="lbl2">หมดอายุ</div></div>
+      <div class="stat"><div class="num" id="statExpired">0</div><div class="lbl2">หมดอายุ</div></div>
     </div>
 
         <div class="toolbar">
@@ -902,37 +898,11 @@ function detect() {
     if (p > best) { best = p; dom = f; }
   }
 
-    const bands = S.range ? lowBands : highBands;
+  const bands = S.range ? lowBands : highBands;
   const i = bands.findIndex(b => dom >= b.lower && dom <= b.upper);
-  const el = $('band');
-
-  if (i < 0) {
-    // ❌ นอกย่าน
-    el.textContent = '⚪ นอกย่านที่กำหนด';
-    el.style.color = 'var(--mu)';
-    return;
-  }
-
+  if (i < 0) { $('band').textContent = 'นอกย่านที่กำหนด'; return; }
   const b = bands[i];
-
-  // ✅ แสดงย่านพร้อมไฮไลต์สี
-  const total = bands.length;   // 16 (high) หรือ 10 (low)
-  el.innerHTML = `🎯 <strong style="color:var(--ac);font-size:1.15em">ย่าน ${i+1}</strong>`
-               + ` <span style="color:var(--mu);font-size:.85em">/ ${total}</span>`
-               + ` <span style="color:var(--mu);font-size:.85em">(${b.lower}–${b.upper} Hz)</span>`;
-  el.style.color = 'var(--tx)';
-  el.style.fontWeight = '700';
-  el.style.letterSpacing = '.02em';
-
-    // ✅ ไฮไลต์ชั่วคราว
-  el.style.background = 'rgba(255,196,0,.12)';
-  el.style.padding = '6px 10px';
-  el.style.borderRadius = '4px';
-  el.style.borderLeft = '4px solid var(--ac)';
-  setTimeout(() => {
-    el.style.background = 'transparent';
-    el.style.borderLeft = 'none';
-  }, 800);
+  $('band').textContent = `ย่าน ${i+1} (${b.lower}–${b.upper} Hz)`;
 
   busy = true;
   (async () => {
@@ -956,14 +926,9 @@ async function startDetector() {
   analyser.fftSize = 8192;
   analyser.smoothingTimeConstant = 0;
   ctx.createMediaStreamSource(stream).connect(analyser);
-    detectTimer = setInterval(detect, 40);
+  detectTimer = setInterval(detect, 40);
   $('go').textContent = 'หยุดการตรวจจับ';
   $('go').classList.add('stop');
-
-  // ✅ reset ข้อความ
-  const el = $('band');
-  el.textContent = '🎧 กำลังฟัง...';
-  el.style.color = 'var(--mu)';
 }
 function stopDetector() {
   clearInterval(detectTimer); detectTimer = null;
@@ -973,14 +938,7 @@ function stopDetector() {
   busy = false;
   $('go').textContent = 'เริ่มการตรวจจับ';
   $('go').classList.remove('stop');
-
-  const el = $('band');
-  el.textContent = '⏹️ หยุดแล้ว';
-  el.style.color = 'var(--mu)';
-  el.style.background = 'transparent';
-  el.style.borderLeft = 'none';
-  el.style.padding = '0';
-
+  $('band').textContent = 'หยุดแล้ว';
   $('lv').style.width = '0';
 }
 $('go').onclick = () => (ctx ? stopDetector() : startDetector());
