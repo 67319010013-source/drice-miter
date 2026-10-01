@@ -1370,13 +1370,27 @@ function checkIdGaps() {
 
 // ✅ ปุ่ม Reset ID
 $('btnResetIds').onclick = async () => {
-  if (!confirm('🔄 เรียง ID ใหม่ให้เป็น 1, 2, 3, 4, ... ?\n\n⚠️ User ที่ login อยู่จะต้อง login ใหม่')) return;
+  if (!confirm('🔄 เรียง ID ใหม่ให้เป็น 1, 2, 3, 4, ... ?\n\n⚠️ ทุกคน (รวมคุณ) จะต้อง login ใหม่')) return;
   const btn = $('btnResetIds');
   btn.disabled = true;
   btn.textContent = '⏳ กำลังเรียง...';
   try {
     const j = await api('POST', '/api/admin/reset-ids');
     toast(j.msg || 'เรียง ID สำเร็จ');
+
+    // ✅ ถ้า server บอกให้ logout → logout ทันที
+    if (j.logout) {
+      setTimeout(() => {
+        fetch('/api/logout', { method: 'POST' }).finally(() => {
+          window.setToken('');
+          me = null;
+          showView('view-auth');
+          setAuthMsg('🔄 Reset ID สำเร็จ กรุณา login ใหม่', 'ok');
+        });
+      }, 1000);
+      return;
+    }
+
     await loadUsers();
   } catch (e) {
     toast('ผิดพลาด: ' + e.message);
