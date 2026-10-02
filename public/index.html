@@ -224,19 +224,12 @@ async function getUserFromReq(req) {
     token = req.headers.authorization.slice(7);
   }
   if (!token) return null;
-
   const r = await db.execute({
     sql: `SELECT u.*, s.expires_at AS session_exp
           FROM sessions s JOIN users u ON u.id = s.user_id
           WHERE s.token = ? AND s.expires_at > ?`,
     args: [token, Date.now()],
   });
-
-  if (r.rows.length === 0) {
-    try { await db.execute({ sql: 'DELETE FROM sessions WHERE token=?', args: [token] }); } catch {}
-    return null;
-  }
-
   return toSafeUser(r.rows[0]);
 }
 
@@ -278,46 +271,6 @@ async function createOrGetPendingIntent(user) {
   });
   const r = await db.execute({ sql: `SELECT * FROM payment_intents WHERE ref=?`, args: [ref] });
   return toSafeIntent(r.rows[0]);
-}
-
-// ============================================================
-//  ✅ Middleware: requireActiveUser
-//  บังคับทุก API ตรวจสอบ user + expiration
-//  → user หมดอายุจะได้ 401 → client เตะออก
-// ============================================================
-async function requireActiveUser(req, res, next) {
-  const u = await getUserFromReq(req);
-  if (!u) {
-    return res.status(401).json({
-      error: 'ยังไม่ได้เข้าสู่ระบบ หรือ session หมดอายุ',
-      expired: true,
-    });
-  }
-
-  const isAdmin = u.is_admin === 1;
-  const isPaid = u.payment_status === 'paid';
-  const isExpired = !isAdmin && isPaid && Date.now() > u.expires_at;
-
-  if (isExpired) {
-    // ✅ ลบ session ที่หมดอายุ
-    let token = req.cookies?.session;
-    if (!token && req.headers.authorization?.startsWith('Bearer ')) {
-      token = req.headers.authorization.slice(7);
-    }
-    if (token) {
-      try { await db.execute({ sql: 'DELETE FROM sessions WHERE token=?', args: [token] }); } catch {}
-    }
-    res.clearCookie('session', {
-      path: '/',
-      sameSite: IS_PROD ? 'none' : 'lax',
-      secure: IS_PROD,
-    });
-    console.log(`⏰ requireActiveUser: "${u.username}" หมดอายุ → 401`);
-    return res.status(401).json({ error: 'หมดอายุ', expired: true });
-  }
-
-  req.user = u;
-  next();
 }
 
 // ============================================================
@@ -454,36 +407,12 @@ app.post('/api/logout', async (req, res) => {
 
 app.get('/api/me', async (req, res) => {
   const u = await getUserFromReq(req);
-
-  if (!u) {
-    return res.status(401).json({
-      error: 'ยังไม่ได้เข้าสู่ระบบ หรือ session หมดอายุ',
-      expired: true,
-    });
-  }
+  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
 
   const isAdmin = u.is_admin === 1;
   const isUnpaid = !isAdmin && u.payment_status !== 'paid';
   const isExpired = !isAdmin && u.payment_status === 'paid' && Date.now() > u.expires_at;
   const needNewPayment = isUnpaid || isExpired;
-
-  // ✅ หมดอายุ → 401 + ลบ session + clear cookie
-  if (isExpired) {
-    let token = req.cookies?.session;
-    if (!token && req.headers.authorization?.startsWith('Bearer ')) {
-      token = req.headers.authorization.slice(7);
-    }
-    if (token) {
-      try { await db.execute({ sql: 'DELETE FROM sessions WHERE token=?', args: [token] }); } catch {}
-    }
-    res.clearCookie('session', {
-      path: '/',
-      sameSite: IS_PROD ? 'none' : 'lax',
-      secure: IS_PROD,
-    });
-    console.log(`⏰ /api/me: "${u.username}" หมดอายุ → 401`);
-    return res.status(401).json({ error: 'หมดอายุ', expired: true });
-  }
 
   let needPayment = false;
   let payment = null;
@@ -494,7 +423,7 @@ app.get('/api/me', async (req, res) => {
       ref: pi.ref,
       amount: Number(pi.amount),
       expires_at: Number(pi.expires_at),
-      reason: 'unpaid',
+      reason: isExpired ? 'expired' : 'unpaid',
     };
   }
 
@@ -509,31 +438,11 @@ app.get('/api/me', async (req, res) => {
 });
 
 // ============================================================
-//  ✅ Heartbeat — client เก่าเรียกได้เพื่อเช็คสถานะ
-// ============================================================
-app.get('/api/heartbeat', async (req, res) => {
-  const u = await getUserFromReq(req);
-  if (!u) return res.status(401).json({ expired: true });
-
-  const isAdmin = u.is_admin === 1;
-  const isExpired = !isAdmin && u.payment_status === 'paid' && Date.now() > u.expires_at;
-
-  if (isExpired) {
-    return res.status(401).json({ expired: true });
-  }
-
-  res.json({
-    ok: true,
-    expires_at: Number(u.expires_at) || 0,
-    need_payment: !isAdmin && u.payment_status !== 'paid',
-  });
-});
-
-// ============================================================
 //  PAYMENT
 // ============================================================
-app.post('/api/payment/new', requireActiveUser, async (req, res) => {
-  const u = req.user;
+app.post('/api/payment/new', async (req, res) => {
+  const u = await getUserFromReq(req);
+  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
   if (u.payment_status === 'paid' && Date.now() < u.expires_at)
     return res.json({ ok: true, already_paid: true });
 
@@ -554,8 +463,10 @@ app.post('/api/payment/new', requireActiveUser, async (req, res) => {
   res.json({ ok: true, ref, amount: Number(PAYMENT_AMOUNT), expires_at: Number(payExp) });
 });
 
-app.get('/api/payment/status', requireActiveUser, async (req, res) => {
-  const u = req.user;
+app.get('/api/payment/status', async (req, res) => {
+  const u = await getUserFromReq(req);
+  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
+
   if (u.payment_status === 'paid' && Date.now() < u.expires_at)
     return res.json({ ok: true, paid: true });
 
@@ -576,11 +487,13 @@ app.get('/api/payment/status', requireActiveUser, async (req, res) => {
   });
 });
 
-app.get('/api/payment/paid', requireActiveUser, async (req, res) => {
-  const u = req.user;
-  if (u.payment_status !== 'paid') {
-    return res.json({ ok: true, paid: false });
-  }
+app.get('/api/payment/paid', async (req, res) => {
+  const u = await getUserFromReq(req);
+  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
+  if (u.payment_status !== 'paid') return res.json({ ok: true, paid: false });
+  if (Date.now() > u.expires_at)
+    return res.status(403).json({ error: 'หมดอายุ' });
+
   res.json({
     ok: true,
     paid: true,
@@ -590,9 +503,10 @@ app.get('/api/payment/paid', requireActiveUser, async (req, res) => {
   });
 });
 
-app.post('/api/payment/upload-slip', requireActiveUser, upload.single('slip'), async (req, res) => {
+app.post('/api/payment/upload-slip', upload.single('slip'), async (req, res) => {
   try {
-    const u = req.user;
+    const u = await getUserFromReq(req);
+    if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
     if (u.payment_status === 'paid' && Date.now() < u.expires_at)
       return res.json({ ok: true, paid: true });
 
@@ -859,7 +773,6 @@ app.post('/api/admin/users/:id/extend', requireAdmin, async (req, res) => {
   const newExp = Math.max(Date.now(), base + hours * 3600 * 1000);
 
   await db.execute({ sql: 'UPDATE users SET expires_at=? WHERE id=?', args: [newExp, id] });
-
   await db.execute({
     sql: 'DELETE FROM sessions WHERE user_id=?',
     args: [id],
@@ -898,7 +811,6 @@ app.post('/api/admin/users/:id/set-time', requireAdmin, async (req, res) => {
       args: [expires_at, id],
     });
   }
-
   await db.execute({
     sql: 'DELETE FROM sessions WHERE user_id=?',
     args: [id],
@@ -938,7 +850,7 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
-//  Reset IDs — เรียง 1,2,3,4,...
+//  ✅ Reset IDs — เรียง 1,2,3,4,...
 // ============================================================
 app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
   try {
@@ -963,6 +875,7 @@ app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
       return res.json({ ok: true, msg: 'ID เรียงถูกต้องอยู่แล้ว', count: 0 });
     }
 
+    // Step 1: ย้าย id ติดลบชั่วคราว
     for (const { oldId } of updates) {
       const tempId = -oldId;
       await db.execute({ sql: 'UPDATE users SET id=? WHERE id=?', args: [tempId, oldId] });
@@ -970,6 +883,7 @@ app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
       await db.execute({ sql: 'UPDATE payment_intents SET user_id=? WHERE user_id=?', args: [tempId, oldId] });
     }
 
+    // Step 2: ย้ายจากติดลบ → ค่าจริง
     for (const { oldId, newId } of updates) {
       const tempId = -oldId;
       await db.execute({ sql: 'UPDATE users SET id=? WHERE id=?', args: [newId, tempId] });
@@ -977,6 +891,7 @@ app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
       await db.execute({ sql: 'UPDATE payment_intents SET user_id=? WHERE user_id=?', args: [newId, tempId] });
     }
 
+    // Step 3: reset sequence
     const maxR = await db.execute('SELECT MAX(id) AS max_id FROM users');
     const maxId = Number(maxR.rows[0]?.max_id || 0);
 
@@ -1005,12 +920,14 @@ setInterval(async () => {
   try {
     const now = Date.now();
 
+    // 1) Expire pending
     await db.execute({
       sql: `UPDATE payment_intents SET status='expired'
             WHERE status='pending' AND expires_at < ?`,
       args: [now],
     });
 
+    // 2) ลบ user ไม่จ่ายภายใน 15 นาที
     const unpaidCutoff = now - (UNPAID_DELETE_MIN * 60 * 1000);
     const unpaidList = await db.execute({
       sql: `SELECT id, username FROM users
@@ -1019,7 +936,6 @@ setInterval(async () => {
               AND created_at < ?`,
       args: [unpaidCutoff],
     });
-
     for (const u of unpaidList.rows) {
       const uid = Number(u.id);
       console.log(`🗑️ ลบ user (ไม่จ่าย ${UNPAID_DELETE_MIN} นาที): ${u.username} (id=${uid})`);
@@ -1028,6 +944,7 @@ setInterval(async () => {
       await db.execute({ sql: 'DELETE FROM users WHERE id=?', args: [uid] });
     }
 
+    // 3) ลบ user หมดอายุเกิน 7 วัน
     const expiredCutoff = now - (EXPIRED_DELETE_DAYS * 24 * 60 * 60 * 1000);
     const expiredList = await db.execute({
       sql: `SELECT id, username FROM users
@@ -1036,7 +953,6 @@ setInterval(async () => {
               AND expires_at < ?`,
       args: [expiredCutoff],
     });
-
     for (const u of expiredList.rows) {
       const uid = Number(u.id);
       console.log(`🗑️ ลบ user (หมดอายุเกิน ${EXPIRED_DELETE_DAYS} วัน): ${u.username} (id=${uid})`);
