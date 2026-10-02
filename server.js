@@ -224,12 +224,19 @@ async function getUserFromReq(req) {
     token = req.headers.authorization.slice(7);
   }
   if (!token) return null;
+
   const r = await db.execute({
     sql: `SELECT u.*, s.expires_at AS session_exp
           FROM sessions s JOIN users u ON u.id = s.user_id
           WHERE s.token = ? AND s.expires_at > ?`,
     args: [token, Date.now()],
   });
+
+  if (r.rows.length === 0) {
+    try { await db.execute({ sql: 'DELETE FROM sessions WHERE token=?', args: [token] }); } catch {}
+    return null;
+  }
+
   return toSafeUser(r.rows[0]);
 }
 
@@ -407,12 +414,35 @@ app.post('/api/logout', async (req, res) => {
 
 app.get('/api/me', async (req, res) => {
   const u = await getUserFromReq(req);
-  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
+
+  if (!u) {
+    return res.status(401).json({
+      error: 'ยังไม่ได้เข้าสู่ระบบ หรือ session หมดอายุ',
+      expired: true,
+    });
+  }
 
   const isAdmin = u.is_admin === 1;
   const isUnpaid = !isAdmin && u.payment_status !== 'paid';
   const isExpired = !isAdmin && u.payment_status === 'paid' && Date.now() > u.expires_at;
   const needNewPayment = isUnpaid || isExpired;
+
+  if (isExpired) {
+    let token = req.cookies?.session;
+    if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+      token = req.headers.authorization.slice(7);
+    }
+    if (token) {
+      try { await db.execute({ sql: 'DELETE FROM sessions WHERE token=?', args: [token] }); } catch {}
+    }
+    res.clearCookie('session', {
+      path: '/',
+      sameSite: IS_PROD ? 'none' : 'lax',
+      secure: IS_PROD,
+    });
+    console.log(`⏰ /api/me: user "${u.username}" หมดอายุ → 401`);
+    return res.status(401).json({ error: 'หมดอายุ', expired: true });
+  }
 
   let needPayment = false;
   let payment = null;
@@ -423,7 +453,7 @@ app.get('/api/me', async (req, res) => {
       ref: pi.ref,
       amount: Number(pi.amount),
       expires_at: Number(pi.expires_at),
-      reason: isExpired ? 'expired' : 'unpaid',
+      reason: 'unpaid',
     };
   }
 
@@ -489,17 +519,27 @@ app.get('/api/payment/status', async (req, res) => {
 
 app.get('/api/payment/paid', async (req, res) => {
   const u = await getUserFromReq(req);
-  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
-  if (u.payment_status !== 'paid') return res.json({ ok: true, paid: false });
-  if (Date.now() > u.expires_at)
-    return res.status(403).json({ error: 'หมดอายุ' });
+  if (!u) {
+    return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ', expired: true });
+  }
+
+  const isAdmin = u.is_admin === 1;
+  const isExpired = !isAdmin && u.payment_status === 'paid' && Date.now() > u.expires_at;
+
+  if (isExpired) {
+    return res.status(401).json({ error: 'หมดอายุ', expired: true });
+  }
+
+  if (u.payment_status !== 'paid') {
+    return res.json({ ok: true, paid: false });
+  }
 
   res.json({
     ok: true,
     paid: true,
     username: u.username,
     expires_at: Number(u.expires_at) || 0,
-    is_admin: u.is_admin ? 1 : 0,
+    is_admin: isAdmin ? 1 : 0,
   });
 });
 
