@@ -480,10 +480,25 @@ const $$ = sel => document.querySelectorAll(sel);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ============================================================
+//  State
+// ============================================================
+let me = null;
+let remainTimer = null;
+let payTimer = null;
+let slipTimer = null;
+let currentRef = null;
+let adminUsers = [];
+let adminTimer = null;
+let cdTimer = null;
+let currentSlipList = [];
+let modalUserId = null;
+
+// ============================================================
 //  Utils
 // ============================================================
 function toast(msg, ms = 2400) {
   const t = $('toast');
+  if (!t) return;
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast._t);
@@ -531,13 +546,58 @@ async function api(method, url, body) {
 // ============================================================
 const VIEWS = ['view-auth', 'view-pay', 'view-slip', 'view-app', 'view-admin'];
 function showView(id) {
-  VIEWS.forEach(v => $(v).classList.toggle('active', v === id));
+  VIEWS.forEach(v => {
+    const el = $(v);
+    if (el) el.classList.toggle('active', v === id);
+  });
   window.scrollTo(0, 0);
   if (id === 'view-auth') {
-    $('btnLogin').disabled = false;
-    $('btnReg').disabled = false;
+    if ($('btnLogin')) $('btnLogin').disabled = false;
+    if ($('btnReg')) $('btnReg').disabled = false;
   }
 }
+
+// ============================================================
+//  🚪 forceLogout
+// ============================================================
+async function forceLogout(reason = '') {
+  console.log('🚪 forceLogout:', reason);
+
+  try { stopDetector(); } catch (e) { console.warn('stopDetector:', e); }
+
+  clearInterval(remainTimer); remainTimer = null;
+  clearInterval(payTimer);    payTimer = null;
+  clearInterval(slipTimer);   slipTimer = null;
+  clearInterval(adminTimer);  adminTimer = null;
+  try { stopCountdownTimer(); } catch {}
+
+  me = null;
+  currentRef = null;
+  adminUsers = [];
+
+  try { window.setToken(''); } catch {}
+
+  try {
+    await Promise.race([
+      fetch('/api/logout', { method: 'POST' }),
+      new Promise(r => setTimeout(r, 1500)),
+    ]);
+  } catch {}
+
+  ['lUser','lPass','rUser','rPass','rPass2'].forEach(id => {
+    const el = $(id);
+    if (el) el.value = '';
+  });
+
+  ['modalSlip','modalManual','modalSetTime'].forEach(id => {
+    const el = $(id);
+    if (el) el.classList.remove('show');
+  });
+
+  showView('view-auth');
+  setAuthMsg(reason || 'กรุณาเข้าสู่ระบบใหม่', 'err');
+}
+window.forceLogout = forceLogout;
 
 // ============================================================
 //  Network
@@ -561,18 +621,21 @@ updateNetBadge();
 // ============================================================
 function setAuthMsg(text, cls) {
   const m = $('authMsg');
+  if (!m) return;
   if (!text) { m.className = 'msg'; m.textContent = ''; return; }
   m.textContent = text;
   m.className = 'msg show ' + (cls || 'info');
 }
 function setPayMsg(t, cls) {
   const m = $('payMsg');
+  if (!m) return;
   if (!t) { m.className = 'msg'; m.textContent = ''; return; }
   m.textContent = t;
   m.className = 'msg show ' + (cls || 'info');
 }
 function setSlipMsg(t, cls) {
   const m = $('slipMsg');
+  if (!m) return;
   if (!t) { m.className = 'msg'; m.textContent = ''; return; }
   m.textContent = t;
   m.className = 'msg show ' + (cls || 'info');
@@ -634,21 +697,23 @@ $('formReg').addEventListener('submit', async e => {
 });
 
 // ============================================================
-//  Router หลัง login
+//  afterLogin
 // ============================================================
-let me = null;
-let remainTimer = null;
-let payTimer = null;
-let slipTimer = null;
-let currentRef = null;
-
 async function afterLogin(data) {
-  console.log('🔍 afterLogin data:', JSON.stringify(data));
+  console.log('🔍 afterLogin:', JSON.stringify(data));
+
+  try { stopDetector(); } catch {}
+  clearInterval(remainTimer); remainTimer = null;
+  clearInterval(payTimer);    payTimer = null;
+  clearInterval(slipTimer);   slipTimer = null;
+  clearInterval(adminTimer);  adminTimer = null;
+  try { stopCountdownTimer(); } catch {}
+
   me = data;
 
-  // ✅ เช็ค admin ก่อน
+  if (data.token) window.setToken(data.token);
+
   const isAdmin = data.is_admin === 1 || data.is_admin === true || data.is_admin === '1';
-  console.log('🔍 isAdmin?', isAdmin, '| is_admin =', data.is_admin, '(', typeof data.is_admin, ')');
 
   if (isAdmin) {
     me.is_admin = 1;
@@ -656,7 +721,17 @@ async function afterLogin(data) {
     return;
   }
 
-  if (data.need_payment) { enterPayment(data.payment); return; }
+  if (data.need_payment) {
+    enterPayment(data.payment);
+    return;
+  }
+
+  const exp = Number(data.expires_at);
+  if (!exp || exp <= Date.now()) {
+    forceLogout('⏰ หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+    return;
+  }
+
   enterApp();
 }
 
@@ -690,6 +765,7 @@ function startPayCountdown(expiresAt) {
   const tick = () => {
     const ms = expiresAt - Date.now();
     const el = $('payTimer');
+    if (!el) return;
     if (ms <= 0) {
       el.textContent = 'หมดเวลา';
       el.classList.add('warn');
@@ -722,6 +798,7 @@ function startSlipCountdown() {
       const tick = () => {
         const ms = exp - Date.now();
         const el = $('slipTimer');
+        if (!el) return;
         if (ms <= 0) {
           el.textContent = 'หมดเวลา';
           el.classList.add('warn');
@@ -757,12 +834,7 @@ $('btnNewRef').onclick = async () => {
 };
 
 $('btnPayLogout').onclick = async () => {
-  clearInterval(payTimer); clearInterval(slipTimer);
-  await fetch('/api/logout', { method: 'POST' }).catch(() => {});
-  window.setToken('');
-  me = null;
-  showView('view-auth');
-  setAuthMsg('');
+  await forceLogout('');
 };
 
 // ============================================================
@@ -793,6 +865,10 @@ $('formSlip').addEventListener('submit', async e => {
       setTimeout(async () => {
         try {
           const r2 = await fetch('/api/payment/paid');
+          if (r2.status === 401) {
+            forceLogout('⏰ หมดอายุ');
+            return;
+          }
           if (r2.ok) {
             const meData = await r2.json();
             me = meData;
@@ -937,21 +1013,26 @@ async function startDetector() {
 function stopDetector() {
   clearInterval(detectTimer); detectTimer = null;
   if (stream) stream.getTracks().forEach(t => t.stop());
-  if (ctx) ctx.close();
+  if (ctx) { try { ctx.close(); } catch {} }
   ctx = analyser = stream = null;
   busy = false;
-  $('go').textContent = 'เริ่มการตรวจจับ';
-  $('go').classList.remove('stop');
-  $('band').textContent = 'หยุดแล้ว';
-  $('lv').style.width = '0';
+  const go = $('go');
+  if (go) {
+    go.textContent = 'เริ่มการตรวจจับ';
+    go.classList.remove('stop');
+  }
+  const band = $('band');
+  if (band) band.textContent = 'หยุดแล้ว';
+  const lv = $('lv');
+  if (lv) lv.style.width = '0';
 }
 $('go').onclick = () => (ctx ? stopDetector() : startDetector());
 
-const cv = $('wave'), g2 = cv.getContext('2d');
+const cv = $('wave'), g2 = cv ? cv.getContext('2d') : null;
 let wbuf;
 function draw() {
   requestAnimationFrame(draw);
-  if (!cv.clientWidth) return;
+  if (!cv || !g2 || !cv.clientWidth) return;
   const dpr = window.devicePixelRatio || 1;
   const w = cv.clientWidth, h = cv.clientHeight;
   if (cv.width !== Math.round(w * dpr)) {
@@ -993,11 +1074,13 @@ function draw() {
 draw();
 
 // ============================================================
-//  Remain timer
+//  ✅ startRemainTimer + poll 30 วิ
 // ============================================================
 function startRemainTimer() {
   clearInterval(remainTimer);
   let notified = false;
+  let lastServerCheck = Date.now();
+  const SERVER_CHECK_INTERVAL = 30 * 1000;
 
   if (me && (me.is_admin === 1 || me.is_admin === true || me.is_admin === '1')) {
     const el = $('remain');
@@ -1031,61 +1114,82 @@ function startRemainTimer() {
       else            txt = `${m}นาที ${String(s).padStart(2,'0')}วิ`;
       el.textContent = txt;
       el.classList.toggle('warn', ms < 3600000);
+    } else {
+      el.textContent = 'หมดเวลา';
+      el.classList.add('warn');
+      clearInterval(remainTimer);
+      if (notified) return;
+      notified = true;
+      toast('⏰ หมดเวลาการใช้งานแล้ว กรุณาเข้าสู่ระบบใหม่', 3000);
+      setTimeout(() => forceLogout('⏰ หมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่'), 2500);
       return;
     }
 
-    el.textContent = 'หมดเวลา';
-    el.classList.add('warn');
-    clearInterval(remainTimer);
-    if (notified) return;
-    notified = true;
+    if (Date.now() - lastServerCheck > SERVER_CHECK_INTERVAL) {
+      lastServerCheck = Date.now();
+      fetch('/api/me').then(async r => {
+        if (r.status === 401) {
+          forceLogout('⏰ หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          return;
+        }
+        if (!r.ok) return;
+        const d = await r.json().catch(() => null);
+        if (!d) return;
 
-    stopDetector();
-    toast('⏰ หมดเวลาการใช้งานแล้ว กรุณาเข้าสู่ระบบเพื่อชำระเงินต่อ', 3000);
+        if (d.need_payment && d.payment?.ref) {
+          stopDetector();
+          clearInterval(remainTimer);
+          me.expires_at = 0;
+          enterPayment(d.payment);
+          return;
+        }
 
-    setTimeout(() => {
-      fetch('/api/logout', { method: 'POST' }).finally(() => {
-        me = null;
-        window.setToken('');
-        showView('view-auth');
-        setAuthMsg('⏰ หมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่', 'err');
-      });
-    }, 3000);
+        if (d.expires_at && Number(d.expires_at) !== Number(me.expires_at)) {
+          console.log('🔄 expires_at sync:', me.expires_at, '→', d.expires_at);
+          me.expires_at = Number(d.expires_at);
+        }
+      }).catch(() => {});
+    }
   };
 
   update();
   remainTimer = setInterval(update, 1000);
 }
 
+// ============================================================
+//  ✅ enterApp
+// ============================================================
 function enterApp() {
   if (me && (me.is_admin === 1 || me.is_admin === true || me.is_admin === '1')) {
     enterAdmin();
     return;
   }
+
+  if (me?.need_payment) {
+    enterPayment(me.payment);
+    return;
+  }
+
+  const exp = Number(me?.expires_at);
+  if (!exp || exp <= Date.now()) {
+    forceLogout('⏰ หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+    return;
+  }
+
   showView('view-app');
   startRemainTimer();
 }
 
-async function doLogout() {
-  stopDetector();
-  clearInterval(remainTimer); clearInterval(payTimer); clearInterval(slipTimer);
-  await fetch('/api/logout', { method: 'POST' }).catch(() => {});
-  window.setToken('');
-  me = null;
-  showView('view-auth');
-  setAuthMsg('');
-  $('lUser').value = ''; $('lPass').value = '';
-  $('rUser').value = ''; $('rPass').value = ''; $('rPass2').value = '';
-}
-$('btnLogout').onclick = doLogout;
+// ============================================================
+//  Logout
+// ============================================================
+$('btnLogout').onclick = async () => {
+  await forceLogout('');
+};
 
 // ============================================================
 //  Admin
 // ============================================================
-let adminUsers = [];
-let adminTimer = null;
-let cdTimer = null;
-
 async function enterAdmin() {
   showView('view-admin');
   $('adminWho').textContent = '👤 ' + me.username;
@@ -1101,6 +1205,10 @@ async function loadUsers() {
     renderUsers();
     tickCountdowns();
   } catch (e) {
+    if (String(e.message).includes('401') || String(e.message).includes('403')) {
+      forceLogout('⏰ session หมดอายุ');
+      return;
+    }
     toast('โหลดผู้ใช้ล้มเหลว: ' + e.message);
   }
 }
@@ -1116,9 +1224,20 @@ function renderUsers() {
   const active  = adminUsers.filter(u =>
     !u.is_admin && u.payment_status === 'paid' && u.expires_at > now
   ).length;
-  $('statTotal').textContent   = total;
-  $('statActive').textContent  = active;
-  $('statExpired').textContent = total - active;
+  const expired = adminUsers.filter(u =>
+    !u.is_admin && u.payment_status === 'paid' && u.expires_at <= now
+  ).length;
+  const unpaid  = adminUsers.filter(u =>
+    !u.is_admin && u.payment_status !== 'paid'
+  ).length;
+
+  if ($('statTotal'))   $('statTotal').textContent   = total;
+  if ($('statActive'))  $('statActive').textContent  = active;
+  if ($('statUnpaid'))  $('statUnpaid').textContent  = unpaid;
+  if ($('statExpired')) $('statExpired').textContent = expired;
+
+  if ($('statUnpaid'))  $('statUnpaid').parentElement.classList.toggle('warn-box', unpaid > 0);
+  if ($('statExpired')) $('statExpired').parentElement.classList.toggle('danger-box', expired > 0);
 
   if (!list.length) {
     $('rows').innerHTML = '<tr><td colspan="7" style="color:var(--mu);text-align:center">ไม่พบผู้ใช้</td></tr>';
@@ -1126,7 +1245,7 @@ function renderUsers() {
   }
 
   $('rows').innerHTML = list.map(u => {
-    const exp = !u.is_admin && u.payment_status === 'paid' && u.expires_at < now;
+    const exp = !u.is_admin && u.payment_status === 'paid' && u.expires_at <= now;
     const rowClass = exp ? 'expired' : '';
     const statusTag = u.is_admin
       ? '<span class="tag">ใช้งานได้</span>'
@@ -1164,7 +1283,7 @@ function renderUsers() {
           <button class="btn sm danger" data-act="del" data-id="${u.id}" data-name="${escapeHtml(u.username)}">ลบ</button>
         </div>`;
 
-        return `<tr class="${rowClass}" data-id="${u.id}">
+    return `<tr class="${rowClass}" data-id="${u.id}">
       <td data-label="ID">${u.id}</td>
       <td data-label="ชื่อผู้ใช้" class="col-user">${escapeHtml(u.username)}${adminTag}${payTag}</td>
       <td data-label="สมัครเมื่อ" class="col-created">${fmtThai(u.created_at)}</td>
@@ -1175,7 +1294,6 @@ function renderUsers() {
     </tr>`;
   }).join('');
 
-  // ✅ ตรวจ ID กระโดด
   checkIdGaps();
 }
 
@@ -1211,7 +1329,6 @@ function startCountdownTimer() {
   tickCountdowns();
   cdTimer = setInterval(tickCountdowns, 1000);
 }
-
 function stopCountdownTimer() {
   clearInterval(cdTimer);
   cdTimer = null;
@@ -1252,6 +1369,10 @@ $('rows').addEventListener('click', async e => {
       await loadUsers();
     }
   } catch (err) {
+    if (String(err.message).includes('401') || String(err.message).includes('403')) {
+      forceLogout('⏰ session หมดอายุ');
+      return;
+    }
     toast(err.message);
   }
 });
@@ -1259,7 +1380,6 @@ $('rows').addEventListener('click', async e => {
 // ============================================================
 //  Slip viewer
 // ============================================================
-let currentSlipList = [];
 async function openSlipModal(userId, username) {
   $('slipImg').src = '';
   $('slipThumbs').style.display = 'none';
@@ -1279,7 +1399,7 @@ async function openSlipModal(userId, username) {
     const toAbs = (url) => {
       if (!url) return '';
       if (url.startsWith('http')) return url;
-      return window.__API_BASE__ + url;
+      return (window.__API_BASE__ || '') + url;
     };
 
     $('slipImg').src = toAbs(currentSlipList[0].slip_image_url);
@@ -1316,7 +1436,6 @@ $('slipThumbs').addEventListener('click', e => {
   img.classList.add('active');
 });
 
-let modalUserId = null;
 function openSetTimeModal(u) {
   modalUserId = u.id;
   const d = new Date(Math.max(Date.now(), u.expires_at));
@@ -1356,7 +1475,6 @@ $('mOk').onclick = async () => {
 $('btnRefresh').onclick = () => loadUsers();
 $('searchBox').oninput = renderUsers;
 
-// ✅ ตรวจ ID กระโดด
 function checkIdGaps() {
   const el = $('idWarning');
   if (!el) return;
@@ -1368,11 +1486,9 @@ function checkIdGaps() {
     if (ids[i] !== ids[i - 1] + 1) { hasGaps = true; break; }
   }
   if (ids[0] !== 1) hasGaps = true;
-
   el.style.display = hasGaps ? 'inline' : 'none';
 }
 
-// ✅ ปุ่ม Reset ID
 $('btnResetIds').onclick = async () => {
   if (!confirm('🔄 เรียง ID ใหม่ให้เป็น 1, 2, 3, 4, ... ?\n\n⚠️ User ที่ login อยู่จะต้อง login ใหม่')) return;
   const btn = $('btnResetIds');
@@ -1391,13 +1507,7 @@ $('btnResetIds').onclick = async () => {
 };
 
 $('btnAdminLogout').onclick = async () => {
-  clearInterval(adminTimer);
-  stopCountdownTimer();
-  await fetch('/api/logout', { method: 'POST' }).catch(() => {});
-  window.setToken('');
-  me = null;
-  showView('view-auth');
-  setAuthMsg('');
+  await forceLogout('');
 };
 
 // ============================================================
@@ -1422,17 +1532,29 @@ document.addEventListener('keydown', e => {
 });
 
 // ============================================================
-//  Boot
+//  ✅ Boot — เช็ค 401
 // ============================================================
 (async function boot() {
   try {
     console.log('🌐 [boot] API_BASE =', window.__API_BASE__);
-    console.log('🌐 [boot] token =', (window.getToken() || '').slice(0, 20) || '(none)');
+    console.log('🌐 [boot] token =', (window.getToken?.() || '').slice(0, 20) || '(none)');
+
+    const qrImg = $('qrImg');
+    if (qrImg) qrImg.src = window.__API_BASE__ + '/qr-payment.png';
 
     const r = await fetch('/api/me');
     console.log('🌐 [boot] /api/me status:', r.status);
 
-    if (!r.ok) { showView('view-auth'); return; }
+    if (r.status === 401) {
+      try { window.setToken(''); } catch {}
+      showView('view-auth');
+      return;
+    }
+
+    if (!r.ok) {
+      showView('view-auth');
+      return;
+    }
 
     const raw = await r.text();
     console.log('🌐 [boot] /api/me body:', raw);
@@ -1455,6 +1577,42 @@ document.addEventListener('keydown', e => {
     showView('view-auth');
   }
 })();
+
+// ============================================================
+//  Page visibility (เบราว์เซอร์ปกติ ไม่มี Capacitor)
+// ============================================================
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible') return;
+  if (!me) return;
+  if (me.is_admin === 1) return;
+
+  try {
+    const r = await fetch('/api/me');
+    if (r.status === 401) {
+      forceLogout('⏰ หมดอายุ กรุณาเข้าสู่ระบบใหม่');
+      return;
+    }
+    if (!r.ok) return;
+    const d = await r.json().catch(() => null);
+    if (!d) return;
+
+    if (d.need_payment) {
+      stopDetector();
+      clearInterval(remainTimer);
+      if (d.payment?.ref) {
+        me.expires_at = 0;
+        enterPayment(d.payment);
+      } else {
+        forceLogout('⏰ หมดอายุ');
+      }
+      return;
+    }
+
+    if (d.expires_at && Number(d.expires_at) !== Number(me.expires_at)) {
+      me.expires_at = Number(d.expires_at);
+    }
+  } catch {}
+});
 
 })();
 </script>
