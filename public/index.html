@@ -1,1000 +1,1462 @@
-// ============================================================
-// drice-miter — Backend (Express + Turso + QR Payment + Slip Verify)
-// ============================================================
-import 'dotenv/config';
-import express from 'express';
-import cookieParser from 'cookie-parser';
-import cors from 'cors';
-import crypto from 'crypto';
-import path from 'path';
-import fs from 'fs';
-import multer from 'multer';
-import { createClient } from '@libsql/client';
-import { fileURLToPath } from 'url';
-import { Jimp } from 'jimp';
-import jsQR from 'jsqr';
-import Tesseract from 'tesseract.js';
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0b">
+<title>drice-miter — ระบบตรวจจับเสียงไฮโล</title>
 
-// ✅ PATCH: BigInt → JSON (Turso return BigInt)
-BigInt.prototype.toJSON = function () {
-  const n = Number(this);
-  return Number.isSafeInteger(n) ? n : this.toString();
+<!-- ✅ ตั้ง API base ก่อนโหลด script อื่น -->
+<script>
+  // ✅ ใช้ Render server URL
+  window.__API_BASE__ = 'https://drice-miter-robo.onrender.com';
+  window.__NATIVE_TOKEN_KEY__ = 'drice_session_token';
+
+  // ✅ Token helper
+  window.getToken = () => localStorage.getItem(window.__NATIVE_TOKEN_KEY__) || '';
+  window.setToken = (t) => {
+    if (t) localStorage.setItem(window.__NATIVE_TOKEN_KEY__, t);
+    else localStorage.removeItem(window.__NATIVE_TOKEN_KEY__);
+  };
+
+  // ✅ Patch fetch: แนบ Bearer token + full URL
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function (input, init = {}) {
+    let url = typeof input === 'string' ? input : input.url;
+
+    if (url.startsWith('/')) url = window.__API_BASE__ + url;
+
+    init.headers = Object.assign({}, init.headers || {});
+    const t = window.getToken();
+    if (t && !init.headers.Authorization) {
+      init.headers.Authorization = 'Bearer ' + t;
+    }
+
+    const finalInput = typeof input === 'string' ? url : new Request(url, input);
+    return _origFetch(finalInput, init);
+  };
+
+  console.log('🌐 API_BASE =', window.__API_BASE__);
+</script>
+
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#0b0b0b; --card:#141414; --card2:#0f0f0f;
+  --tx:#f1f1ee; --mu:#9b9b90; --ac:#ffc400; --on:#000;
+  --bd:#2c2c26; --er:#ff4444; --ok:#4ade80;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--tx);
+  font:16px/1.5 system-ui,-apple-system,"Sarabun","Noto Sans Thai",sans-serif;
+  transition:background .12s ease;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+body.flash{background:var(--ac)}
+.view{display:none;min-height:100vh}
+.view.active{display:block}
+
+/* Auth */
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-box{width:100%;max-width:420px;background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:24px}
+.auth-box h1{font-size:1.05rem;font-weight:700;letter-spacing:.03em;margin:0 0 6px;border-bottom:2px solid var(--ac);padding-bottom:12px}
+.auth-box .subtitle{color:var(--mu);font-size:.82rem;margin:0 0 16px}
+.tabs{display:flex;gap:6px;margin-bottom:16px}
+.tabs button{flex:1;padding:10px;font:inherit;background:var(--card2);color:var(--mu);border:1px solid var(--bd);border-radius:3px;cursor:pointer}
+.tabs button.on{background:var(--ac);color:var(--on);font-weight:700;border-color:var(--ac)}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:.78rem;color:var(--ac);margin-bottom:4px;letter-spacing:.05em}
+.field input{width:100%;padding:12px;font:inherit;background:#0a0a0a;color:var(--tx);border:1px solid var(--bd);border-radius:3px}
+.field input:focus{outline:none;border-color:var(--ac)}
+.btn{width:100%;padding:14px;font:inherit;font-weight:700;background:var(--ac);color:var(--on);border:none;border-radius:3px;cursor:pointer;letter-spacing:.04em}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.sec{background:transparent;color:var(--ac);border:1px solid var(--ac)}
+.btn.danger{background:transparent;color:var(--er);border:1px solid var(--er)}
+.btn.sm{padding:6px 10px;font-size:.82rem;width:auto;font-weight:600}
+.msg{font-size:.85rem;padding:9px 12px;border-radius:3px;margin-bottom:12px;display:none;line-height:1.4}
+.msg.show{display:block}
+.msg.err{background:#2a1010;color:#ff9b9b;border-left:3px solid var(--er)}
+.msg.ok{background:#0f2418;color:#a3e0b8;border-left:3px solid var(--ok)}
+.msg.info{background:#1a1a0f;color:#e0d89e;border-left:3px solid var(--ac)}
+.note{font-size:.78rem;color:var(--mu);margin-top:14px;text-align:center;line-height:1.6}
+
+main{max-width:640px;margin:0 auto;padding:16px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:2px solid var(--ac);padding-bottom:10px;margin-bottom:14px}
+.top h1{font-size:1.02rem;font-weight:700;letter-spacing:.02em;margin:0}
+.top .right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.badge{font-size:.72rem;border:1px solid var(--ac);color:var(--ac);padding:3px 9px;border-radius:3px;white-space:nowrap}
+.badge.live{background:var(--ac);color:var(--on);font-weight:700}
+.badge.warn{background:transparent;color:var(--er);border-color:var(--er);animation:badge-blink 1s ease-in-out infinite}
+@keyframes badge-blink{0%,100%{opacity:1}50%{opacity:.35}}
+.btn-icon{background:transparent;color:var(--ac);border:1px solid var(--ac);font:inherit;font-size:.75rem;padding:4px 10px;border-radius:3px;cursor:pointer}
+
+.card{background:var(--card);border:1px solid var(--bd);border-radius:4px;padding:14px;margin-bottom:12px}
+.lbl{font-size:.78rem;color:var(--ac);letter-spacing:.06em;margin:12px 0 6px;padding-left:8px;border-left:3px solid var(--ac)}
+.lbl:first-child{margin-top:0}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button,#go{font:inherit;border:1px solid var(--bd);background:var(--card2);color:var(--tx);padding:8px 12px;border-radius:3px;cursor:pointer;flex:1;min-width:64px}
+.seg button.on{background:var(--ac);color:var(--on);border-color:var(--ac);font-weight:700}
+#go{width:100%;background:var(--ac);color:var(--on);border-color:var(--ac);font-weight:700;padding:14px;font-size:1rem;letter-spacing:.04em}
+#go.stop{background:transparent;color:var(--ac)}
+canvas{width:100%;height:150px;display:block;background:#080808;border:1px solid var(--bd);border-radius:2px}
+.sub{margin-top:10px;font-weight:600;min-height:1.5em}
+.meter{height:6px;background:var(--bd);margin-top:8px;border-radius:2px;overflow:hidden}
+#lv{height:100%;width:0;background:var(--ac);transition:width .05s linear}
+input[type=range]{width:100%;accent-color:var(--ac)}
+input[type=checkbox]{accent-color:var(--ac)}
+label.chk{margin-right:14px;font-size:.95rem;cursor:pointer}
+
+.admin-wrap{max-width:1100px;margin:0 auto;padding:16px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--bd);border-radius:4px;overflow:hidden;font-size:.9rem}
+th,td{padding:10px;text-align:left;border-bottom:1px solid var(--bd);vertical-align:middle}
+th{background:var(--card2);color:var(--ac);font-size:.78rem;letter-spacing:.05em;font-weight:600}
+tr:last-child td{border-bottom:none}
+tr.expired td:first-child{color:var(--er)}
+tr.expired{background:rgba(255,68,68,.04)}
+.actions{display:flex;gap:4px;flex-wrap:wrap}
+.tag{display:inline-block;font-size:.68rem;padding:2px 7px;border-radius:3px;background:var(--ac);color:var(--on);font-weight:700;letter-spacing:.03em}
+.tag.exp{background:var(--er);color:#fff}
+.tag.admin{background:#4a90e2;color:#fff}
+.tag.unpaid{background:#666;color:#fff}
+.tag.paid{background:#16a34a;color:#fff}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--bd);border-radius:4px;padding:12px;text-align:center}
+.stat .num{font-size:1.5rem;font-weight:700;color:var(--ac);line-height:1.2}
+.stat .lbl2{font-size:.72rem;color:var(--mu);letter-spacing:.05em;margin-top:2px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap}
+.toolbar strong{color:var(--ac);letter-spacing:.05em}
+
+.cd{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:.82rem;letter-spacing:.02em;white-space:nowrap}
+.cd.ok{color:var(--ok)}
+.cd.warn{color:var(--ac)}
+.cd.danger{color:#ff8c00}
+.cd.dead{color:var(--er)}
+
+.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;padding:16px;z-index:100}
+.modal-back.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:20px;max-width:380px;width:100%}
+.modal h3{margin:0 0 12px;color:var(--ac);font-size:1rem;letter-spacing:.03em}
+.modal .field{margin-bottom:12px}
+.modal .row{display:flex;gap:8px;margin-top:14px}
+.modal .row .btn{flex:1}
+
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--card);border:1px solid var(--ac);color:var(--tx);padding:10px 18px;border-radius:4px;font-size:.88rem;opacity:0;pointer-events:none;transition:.2s;z-index:200;max-width:90vw}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.slip-modal{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;padding:16px;z-index:150;flex-direction:column;gap:12px}
+.slip-modal.show{display:flex}
+.slip-modal img{max-width:100%;max-height:80vh;border-radius:6px;border:2px solid var(--ac);box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.slip-modal .slip-close{position:absolute;top:20px;right:20px;background:var(--ac);color:var(--on);border:none;width:40px;height:40px;border-radius:50%;font-size:1.4rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.slip-modal .slip-thumbs{display:flex;gap:8px;overflow-x:auto;padding:6px 2px;max-width:600px;width:100%}
+.slip-modal .slip-thumbs img{width:56px;height:56px;object-fit:cover;border-radius:4px;border:2px solid var(--bd);cursor:pointer;opacity:.55;transition:.15s}
+.slip-modal .slip-thumbs img.active{opacity:1;border-color:var(--ac)}
+
+/* Admin Table Responsive */
+.admin-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.admin-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--bd);border-radius:4px;overflow:hidden;font-size:.9rem}
+@media (max-width: 768px) {
+  .admin-wrap { padding: 12px; }
+  .admin-wrap .top { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .admin-wrap .top h1 { font-size: .95rem; }
+  .admin-wrap .top .right { width: 100%; justify-content: flex-start; }
+    .summary {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .stat { padding: 10px 6px; }
+  .stat .num { font-size: 1.25rem; }
+  .stat .lbl2 { font-size: .65rem; }
+  .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .toolbar > div { display: flex; gap: 6px; }
+  .toolbar #searchBox { flex: 1; min-width: 0; }
+  .admin-table-wrap { overflow: visible; }
+  .admin-table { border: none; background: transparent; border-radius: 0; font-size: .85rem; }
+  .admin-table thead { display: none; }
+  .admin-table colgroup { display: none; }
+  .admin-table tbody { display: block; }
+  .admin-table tr { display: block; background: var(--card); border: 1px solid var(--bd); border-radius: 6px; padding: 12px; margin-bottom: 10px; position: relative; }
+  .admin-table tr.expired { border-left: 3px solid var(--er); background: rgba(255, 68, 68, .04); }
+  .admin-table td { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; border: none; text-align: right; font-size: .85rem; }
+  .admin-table td::before { content: attr(data-label); color: var(--ac); font-size: .72rem; letter-spacing: .05em; font-weight: 600; text-align: left; flex-shrink: 0; opacity: .85; }
+  .admin-table td[data-label="ID"] { position: absolute; top: 8px; right: 12px; font-size: .7rem; color: var(--mu); background: var(--card2); border-radius: 3px; padding: 2px 8px; border: 1px solid var(--bd); }
+  .admin-table td[data-label="ID"]::before { display: none; }
+  .admin-table td[data-label="ชื่อผู้ใช้"] { justify-content: flex-start; text-align: left; font-size: .95rem; font-weight: 700; padding-right: 60px; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px dashed var(--bd); flex-wrap: wrap; gap: 6px; }
+  .admin-table td[data-label="ชื่อผู้ใช้"]::before { display: none; }
+  .admin-table td[data-label="จัดการ"] { display: block; padding-top: 10px; margin-top: 6px; border-top: 1px dashed var(--bd); text-align: left; }
+  .admin-table td[data-label="จัดการ"]::before { display: block; margin-bottom: 6px; }
+  .admin-table td[data-label="จัดการ"] .actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .admin-table td[data-label="จัดการ"] .actions .btn.sm { width: 100%; padding: 8px 6px; font-size: .78rem; text-align: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ AUTH ============ -->
+<section id="view-auth" class="view active">
+  <div class="auth-wrap">
+    <div class="auth-box">
+      <h1>LOGIN</h1>
+      <p class="subtitle">ระบบตรวจจับเสียงไฮโล</p>
+      <div class="tabs">
+        <button id="tabLogin" class="on">เข้าสู่ระบบ</button>
+        <button id="tabReg">สมัครสมาชิก</button>
+      </div>
+      <div id="authMsg" class="msg"></div>
+
+      <form id="formLogin" autocomplete="on">
+        <div class="field"><label>ชื่อผู้ใช้</label>
+          <input id="lUser" autocomplete="username" required maxlength="32"></div>
+        <div class="field"><label>รหัสผ่าน</label>
+          <input id="lPass" type="password" autocomplete="current-password" required></div>
+        <button type="submit" class="btn" id="btnLogin">เข้าสู่ระบบ</button>
+      </form>
+
+      <form id="formReg" style="display:none" autocomplete="on">
+        <div class="field"><label>ชื่อผู้ใช้ (3–32 ตัวอักษร)</label>
+          <input id="rUser" autocomplete="username" required minlength="3" maxlength="32"></div>
+        <div class="field"><label>รหัสผ่าน (อย่างน้อย 4 ตัวอักษร)</label>
+          <input id="rPass" type="password" autocomplete="new-password" required minlength="4"></div>
+        <div class="field"><label>ยืนยันรหัสผ่าน</label>
+          <input id="rPass2" type="password" autocomplete="new-password" required minlength="4"></div>
+        <button type="submit" class="btn" id="btnReg">สมัครสมาชิก</button>
+      </form>
+
+      <button id="btnManualAuth" class="btn sec" style="margin-top:12px">📘 คู่มือการใช้งาน</button>
+
+            <div class="note">
+        สมาชิกใหม่ <strong style="color:var(--ac)">500 บาท / 24 ชั่วโมง</strong><br>
+        ชำระผ่าน QR → อัพสลิป → ใช้งานได้ทันที<br>
+        <span style="color:var(--er);font-size:.72rem;display:block;margin-top:6px">
+          ⚠️ สมัครแล้วไม่ชำระภายใน 15 นาที บัญชีจะถูกลบอัตโนมัติ
+        </span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PAY ============ -->
+<section id="view-pay" class="view">
+  <div class="auth-wrap">
+    <div class="auth-box" style="max-width:480px">
+      <h1>ชำระเงินค่าสมาชิก</h1>
+      <p class="subtitle">สแกน QR เพื่อชำระเงิน <strong style="color:var(--ac)">500 บาท</strong></p>
+      <div id="payMsg" class="msg"></div>
+
+      <div style="text-align:center;margin:16px 0;padding:16px;background:#fff;border-radius:6px">
+        <img id="qrImg" src="/qr-payment.png" alt="QR 500 บาท"
+             style="max-width:260px;width:100%;display:block;margin:0 auto">
+      </div>
+
+      <div style="text-align:center;font-size:.9rem;color:var(--mu);margin-bottom:14px">
+        ยอดเงิน: <strong style="color:var(--ac);font-size:1.2rem">500.00 บาท</strong>
+      </div>
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:.8rem;color:var(--mu)">รหัสอ้างอิง</div>
+        <code id="payRef" style="font-size:1rem;color:var(--ac)">--</code>
+      </div>
+      <div style="text-align:center;margin-bottom:16px">
+        <span class="badge" id="payTimer">--:--</span>
+        <span style="font-size:.8rem;color:var(--mu);margin-left:6px">เหลือเวลา</span>
+      </div>
+
+      <button id="btnOpenSlip" class="btn">📸 อัพโหลดสลิป</button>
+      <button id="btnNewRef" class="btn sec" style="margin-top:8px;display:none">
+        🔄 ขอเวลาใหม่ (15 นาที)
+      </button>
+      <button id="btnPayLogout" class="btn danger" style="margin-top:8px">ออกจากระบบ</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SLIP ============ -->
+<section id="view-slip" class="view">
+  <div class="auth-wrap">
+    <div class="auth-box" style="max-width:480px">
+      <h1>อัพโหลดสลิป</h1>
+      <p class="subtitle">อัพโหลดสลิปเพื่อยืนยันการชำระเงิน</p>
+      <div id="slipMsg" class="msg"></div>
+
+      <form id="formSlip">
+        <div class="field">
+          <label>รูปสลิป (JPG / PNG, ไม่เกิน 10 MB)</label>
+          <input id="slipFile" type="file" accept="image/*" required
+                 style="padding:10px;background:#0a0a0a;color:var(--tx);border:1px solid var(--bd);border-radius:3px;width:100%">
+        </div>
+        <img id="slipPreview" style="display:none;max-width:100%;margin:10px 0;border-radius:4px;border:1px solid var(--bd)">
+        <div style="text-align:center;margin:10px 0">
+          <span class="badge" id="slipTimer">--:--</span>
+        </div>
+        <button type="submit" class="btn" id="btnUploadSlip">🔍 ตรวจสอบสลิป</button>
+        <button type="button" class="btn sec" id="btnBackPay" style="margin-top:8px">← กลับ</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ============ APP ============ -->
+<section id="view-app" class="view">
+  <main>
+    <div class="top">
+      <h1>ตรวจจับเสียงไฮโล</h1>
+      <div class="right">
+        <span class="badge" id="netBadge">ออฟไลน์</span>
+        <span class="badge" id="remain" title="เวลาที่เหลือ">--:--</span>
+        <button class="btn-icon" id="btnManualApp">📘</button>
+        <button class="btn-icon" id="btnLogout">ออก</button>
+      </div>
+    </div>
+
+    <button id="go">เริ่มการตรวจจับ</button>
+
+    <div class="card" style="margin-top:12px">
+      <canvas id="wave"></canvas>
+      <div class="sub" id="band">ยังไม่เริ่ม</div>
+      <div class="meter"><div id="lv"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">โหมดแจ้งเตือน</div>
+      <div class="seg" data-k="mode">
+        <button data-v="0" class="on">โหมดตีแต้ม</button>
+        <button data-v="1">โหมด 5-6</button>
+      </div>
+      <div class="lbl">ย่านความถี่</div>
+      <div class="seg" data-k="range">
+        <button data-v="0" class="on">จานเปิดตูด</button>
+        <button data-v="1">จานปิดตูด</button>
+      </div>
+      <div class="lbl">ปรับระดับการรับ</div>
+      <div class="seg" data-k="start">
+        <button data-v="400" class="on">ปรับการรับ 1</button>
+        <button data-v="500">ปรับการรับ 2</button>
+        <button data-v="600">ปรับการรับ 3</button>
+        <button data-v="800">ปรับการรับ 4</button>
+      </div>
+      <div class="lbl">ฟังค์ชั่น</div>
+      <div class="seg" data-k="buf">
+        <button data-v="64" class="on">แสตนดาร์ด</button>
+        <button data-v="128">เพิ่มความแม่นครั้งที่ 1</button>
+        <button data-v="512">เพิ่มความแม่นครั้งที่ 2</button>
+      </div>
+      <div class="lbl">จูนระบบจาน <span id="thv">0.020</span></div>
+      <input type="range" id="th" min="0.002" max="0.2" step="0.002" value="0.02">
+      <div class="lbl">ช่องทางแจ้งเตือน</div>
+      <label class="chk"><input type="checkbox" id="sSnd" checked> เสียง</label>
+      <label class="chk"><input type="checkbox" id="sVib" checked> สั่น</label>
+      <label class="chk"><input type="checkbox" id="sFls" checked> ไฟหน้าจอ</label>
+    </div>
+  </main>
+</section>
+
+<!-- ============ ADMIN ============ -->
+<section id="view-admin" class="view">
+  <div class="admin-wrap">
+    <div class="top">
+      <h1>แผงควบคุมแอดมิน</h1>
+      <div class="right">
+        <span class="badge" id="adminNet">ออฟไลน์</span>
+        <span class="badge" id="adminWho">--</span>
+        <button class="btn-icon" id="btnAdminLogout">ออกจากระบบ</button>
+      </div>
+    </div>
+
+        <div class="summary">
+      <div class="stat"><div class="num" id="statTotal">0</div><div class="lbl2">ผู้ใช้ทั้งหมด</div></div>
+      <div class="stat"><div class="num" id="statActive">0</div><div class="lbl2">ใช้งานได้</div></div>
+      <div class="stat"><div class="num" id="statUnpaid" style="color:#ff8c00">0</div><div class="lbl2">ยังไม่จ่าย</div></div>
+      <div class="stat"><div class="num" id="statExpired" style="color:var(--er)">0</div><div class="lbl2">หมดอายุ</div></div>
+    </div>
+
+        <div class="toolbar">
+      <strong>รายชื่อผู้ใช้</strong>
+      <span id="idWarning" style="color:var(--er);font-size:.75rem;display:none">
+        ⚠️ ID มีเลขกระโดด — กดปุ่ม "เรียง ID" เพื่อแก้ไข
+      </span>
+      <div>
+        <input id="searchBox" placeholder="ค้นหาชื่อ..."
+               style="padding:6px 10px;background:var(--card2);color:var(--tx);border:1px solid var(--bd);border-radius:3px;font:inherit;font-size:.85rem">
+        <button class="btn sec sm" id="btnRefresh">รีเฟรช</button>
+        <button class="btn sm" id="btnResetIds"
+                style="background:#ff8c00;color:#000;border:none;font-weight:700">🔄 เรียง ID</button>
+      </div>
+    </div>
+
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th><th>ชื่อผู้ใช้</th><th>สมัครเมื่อ</th>
+            <th>หมดอายุ</th><th>เหลืออีก</th><th>สถานะ</th><th>จัดการ</th>
+          </tr>
+        </thead>
+        <tbody id="rows">
+          <tr><td colspan="7" style="color:var(--mu)">กำลังโหลด...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- Modal SetTime -->
+<div id="modalSetTime" class="modal-back">
+  <div class="modal">
+    <h3>ตั้งเวลาหมดอายุ</h3>
+    <div class="field">
+      <label>วันและเวลา (YYYY-MM-DD HH:MM)</label>
+      <input id="mTime" placeholder="2025-12-31 23:59">
+    </div>
+    <div class="row">
+      <button class="btn sec" id="mCancel">ยกเลิก</button>
+      <button class="btn" id="mOk">บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Slip -->
+<div id="modalSlip" class="slip-modal">
+  <button class="slip-close" id="slipClose" title="ปิด">×</button>
+  <img id="slipImg" src="" alt="สลิป">
+  <div class="slip-thumbs" id="slipThumbs" style="display:none"></div>
+</div>
+
+<!-- Modal Manual -->
+<div id="modalManual" class="modal-back">
+  <div class="modal" style="max-width:600px;max-height:85vh;overflow-y:auto">
+    <h3 style="display:flex;justify-content:space-between;align-items:center">
+      <span>📘 คู่มือการใช้งาน drice-miter</span>
+      <button id="manualClose" style="background:none;border:none;color:var(--mu);font-size:1.5rem;cursor:pointer;line-height:1">×</button>
+    </h3>
+
+    <div style="font-size:.9rem;line-height:1.7;color:var(--tx)">
+      <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
+        <strong style="color:var(--ac);letter-spacing:.05em">🔐 การเข้าสู่ระบบ</strong>
+      </div>
+      <ol style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
+        <li>เปิดแอป <strong style="color:var(--tx)">drice-miter</strong> จะพบหน้าล็อกอิน</li>
+        <li>หากยังไม่มีบัญชี ให้กดแท็บ <strong style="color:var(--ac)">"สมัครสมาชิก"</strong></li>
+        <li>กรอก <strong style="color:var(--tx)">ชื่อผู้ใช้</strong> (3–32 ตัวอักษร) และ <strong style="color:var(--tx)">รหัสผ่าน</strong> (อย่างน้อย 4 ตัวอักษร)</li>
+        <li>กดปุ่ม <strong style="color:var(--ac)">"สมัครสมาชิก"</strong> ระบบจะพาไปหน้าชำระเงิน</li>
+        <li>สแกน QR จ่าย <strong style="color:var(--ac)">500 บาท</strong> แล้วอัพโหลดสลิป</li>
+        <li>รอระบบตรวจสอบสลิป (10–30 วินาที) เมื่อสำเร็จจะเข้าสู่หน้าตรวจเสียงอัตโนมัติ</li>
+      </ol>
+
+      <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
+        <strong style="color:var(--ac);letter-spacing:.05em">🎧 การใช้งานตรวจจับเสียง</strong>
+      </div>
+      <ol style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
+        <li>กดปุ่ม <strong style="color:var(--ac)">"เริ่มการตรวจจับ"</strong> → อนุญาตไมค์</li>
+        <li>เลือกโหมด ย่านความถี่ ระดับการรับ ฟังก์ชั่น ตามต้องการ</li>
+        <li>ปรับ <strong style="color:var(--tx)">จูนระบบจาน</strong> — ค่าเริ่มต้น 0.020</li>
+        <li>เลือกช่องทางแจ้งเตือน: เสียง / สั่น / ไฟหน้าจอ</li>
+        <li>กด <strong style="color:var(--ac)">"หยุดการตรวจจับ"</strong> เพื่อหยุด</li>
+      </ol>
+
+      <div style="border-left:3px solid var(--er);padding-left:12px;margin:16px 0 8px">
+        <strong style="color:var(--er);letter-spacing:.05em">⚠️ ข้อควรระวัง</strong>
+      </div>
+      <ul style="margin:0 0 8px;padding-left:20px;color:var(--mu)">
+        <li>ควรใช้ในที่เงียบเพื่อลดสัญญาณรบกวน</li>
+        <li>หากแจ้งเตือนบ่อยเกินไป ให้เพิ่มค่า Threshold</li>
+        <li>หมดอายุ → Login ชื่อ/พาส เดิมเพื่อสแกนจ่ายต่ออายุ</li>
+      </ul>
+    </div>
+
+    <div class="row" style="margin-top:20px">
+      <button class="btn" id="manualOk">รับทราบ</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+'use strict';
+
+const $  = id => document.getElementById(id);
+const $$ = sel => document.querySelectorAll(sel);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ============================================================
+//  Utils
+// ============================================================
+function toast(msg, ms = 2400) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function fmtThai(ts) {
+  if (!ts) return '-';
+  return new Date(ts).toLocaleString('th-TH', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function fmtRemain(ms) {
+  if (ms <= 0) return 'หมดอายุ';
+  const d = Math.floor(ms / 86400000);
+  const h = Math.floor((ms % 86400000) / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  if (d > 0) return `${d}วัน ${h}ชม.`;
+  if (h > 0) return `${h}ชม. ${m}นาที`;
+  if (m > 0) return `${m}นาที ${s}วิ`;
+  return `${s}วิ`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+async function api(method, url, body) {
+  const opt = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opt.body = JSON.stringify(body);
+  const r = await fetch(url, opt);
+  const ct = r.headers.get('content-type') || '';
+  const j = ct.includes('json') ? await r.json().catch(() => ({})) : {};
+  if (!r.ok) throw new Error(j.error || j.msg || `HTTP ${r.status}`);
+  return j;
+}
+
+// ============================================================
+//  Router
+// ============================================================
+const VIEWS = ['view-auth', 'view-pay', 'view-slip', 'view-app', 'view-admin'];
+function showView(id) {
+  VIEWS.forEach(v => $(v).classList.toggle('active', v === id));
+  window.scrollTo(0, 0);
+  if (id === 'view-auth') {
+    $('btnLogin').disabled = false;
+    $('btnReg').disabled = false;
+  }
+}
+
+// ============================================================
+//  Network
+// ============================================================
+const netBadges = [$('netBadge'), $('adminNet')];
+function updateNetBadge() {
+  const online = navigator.onLine;
+  netBadges.forEach(b => {
+    if (!b) return;
+    b.textContent = online ? 'ออนไลน์' : 'ออฟไลน์';
+    b.classList.toggle('live', online);
+    b.classList.toggle('warn', !online);
+  });
+}
+window.addEventListener('online', updateNetBadge);
+window.addEventListener('offline', updateNetBadge);
+updateNetBadge();
+
+// ============================================================
+//  Auth UI
+// ============================================================
+function setAuthMsg(text, cls) {
+  const m = $('authMsg');
+  if (!text) { m.className = 'msg'; m.textContent = ''; return; }
+  m.textContent = text;
+  m.className = 'msg show ' + (cls || 'info');
+}
+function setPayMsg(t, cls) {
+  const m = $('payMsg');
+  if (!t) { m.className = 'msg'; m.textContent = ''; return; }
+  m.textContent = t;
+  m.className = 'msg show ' + (cls || 'info');
+}
+function setSlipMsg(t, cls) {
+  const m = $('slipMsg');
+  if (!t) { m.className = 'msg'; m.textContent = ''; return; }
+  m.textContent = t;
+  m.className = 'msg show ' + (cls || 'info');
+}
+
+$('tabLogin').onclick = () => {
+  $('tabLogin').classList.add('on');
+  $('tabReg').classList.remove('on');
+  $('formLogin').style.display = '';
+  $('formReg').style.display = 'none';
+  setAuthMsg('');
+};
+$('tabReg').onclick = () => {
+  $('tabReg').classList.add('on');
+  $('tabLogin').classList.remove('on');
+  $('formLogin').style.display = 'none';
+  $('formReg').style.display = '';
+  setAuthMsg('');
 };
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const app = express();
-const PORT = process.env.PORT || 3000;
-const IS_PROD = process.env.NODE_ENV === 'production';
-
-// ---------- Config ----------
-const SESSION_HOURS = 24;
-const PAYMENT_AMOUNT = Number(process.env.PAYMENT_AMOUNT || 500);
-const PAYMENT_WINDOW_MIN = Number(process.env.PAYMENT_WINDOW_MIN || 15);
-const PAYMENT_WINDOW_MS = PAYMENT_WINDOW_MIN * 60 * 1000;
-const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASS || '0647748563';
-const EXPECTED_NAME = (process.env.RECEIVER_NAME || '').trim();
-const EXPECTED_NAME_EN = (process.env.RECEIVER_NAME_EN || '').trim();
-const EXPECTED_LAST4 = (process.env.RECEIVER_ACCOUNT_LAST4 || '').trim();
-
-// ✅ Auto-cleanup config
-const UNPAID_DELETE_MIN = Number(process.env.UNPAID_DELETE_MIN || 15);
-const EXPIRED_DELETE_DAYS = Number(process.env.EXPIRED_DELETE_DAYS || 7);
-
-if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) {
-  console.error('❌ ต้องตั้งค่า TURSO_DATABASE_URL และ TURSO_AUTH_TOKEN');
-  process.exit(1);
-}
-
-const db = createClient({
-  url: process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
-
-const PUBLIC_DIR = path.join(__dirname, 'public');
-const SLIPS_DIR = path.join(PUBLIC_DIR, 'slips');
-fs.mkdirSync(SLIPS_DIR, { recursive: true });
-
-// ============================================================
-//  ✅ CORS — รองรับ Capacitor + Render
-// ============================================================
-app.set('trust proxy', 1);
-
-app.use(cors({
-  origin: true,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Set-Cookie'],
-  maxAge: 86400,
-}));
-
-app.options('*', cors({ origin: true, credentials: true }));
-
-app.use(express.json({ limit: '1mb' }));
-app.use(cookieParser());
-
-// ============================================================
-//  Multer
-// ============================================================
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('รองรับเฉพาะไฟล์รูปภาพ'));
-  },
-});
-
-// ============================================================
-//  Static
-// ============================================================
-app.use('/slips', express.static(SLIPS_DIR, { dotfiles: 'deny' }));
-app.use('/qr-payment.png', express.static(path.join(PUBLIC_DIR, 'qr-payment.png')));
-
-// ============================================================
-//  DB Init
-// ============================================================
-async function initDB() {
-  await db.batch([
-    `CREATE TABLE IF NOT EXISTS users (
-       id INTEGER PRIMARY KEY AUTOINCREMENT,
-       username TEXT UNIQUE NOT NULL,
-       password_hash TEXT NOT NULL,
-       salt TEXT NOT NULL,
-       created_at INTEGER NOT NULL,
-       expires_at INTEGER NOT NULL,
-       is_admin INTEGER NOT NULL DEFAULT 0,
-       payment_status TEXT NOT NULL DEFAULT 'unpaid',
-       payment_ref TEXT,
-       payment_expires_at INTEGER,
-       last_slip_url TEXT
-     )`,
-    `CREATE TABLE IF NOT EXISTS sessions (
-       token TEXT PRIMARY KEY,
-       user_id INTEGER NOT NULL,
-       expires_at INTEGER NOT NULL
-     )`,
-    `CREATE TABLE IF NOT EXISTS payment_intents (
-       id INTEGER PRIMARY KEY AUTOINCREMENT,
-       ref TEXT UNIQUE NOT NULL,
-       user_id INTEGER NOT NULL,
-       username TEXT NOT NULL,
-       amount INTEGER NOT NULL,
-       status TEXT NOT NULL DEFAULT 'pending',
-       created_at INTEGER NOT NULL,
-       expires_at INTEGER NOT NULL,
-       paid_at INTEGER,
-       slip_qr_payload TEXT,
-       slip_image_url TEXT,
-       reject_reason TEXT
-     )`,
-    `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_sessions_exp  ON sessions(expires_at)`,
-    `CREATE INDEX IF NOT EXISTS idx_pay_ref       ON payment_intents(ref)`,
-    `CREATE INDEX IF NOT EXISTS idx_pay_user      ON payment_intents(user_id)`,
-    `CREATE INDEX IF NOT EXISTS idx_pay_qr        ON payment_intents(slip_qr_payload)`,
-    `CREATE INDEX IF NOT EXISTS idx_users_cleanup ON users(is_admin, payment_status, created_at, expires_at)`,
-  ]);
-
-  const alters = [
-    `ALTER TABLE users ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'unpaid'`,
-    `ALTER TABLE users ADD COLUMN payment_ref TEXT`,
-    `ALTER TABLE users ADD COLUMN payment_expires_at INTEGER`,
-    `ALTER TABLE users ADD COLUMN last_slip_url TEXT`,
-    `ALTER TABLE payment_intents ADD COLUMN detected_name TEXT`,
-    `ALTER TABLE payment_intents ADD COLUMN detected_time TEXT`,
-    `ALTER TABLE payment_intents ADD COLUMN ocr_text TEXT`,
-    `ALTER TABLE payment_intents ADD COLUMN admin_note TEXT`,
-  ];
-  for (const sql of alters) {
-    try { await db.execute(sql); } catch { /* column exists */ }
-  }
-
-  const r = await db.execute({
-    sql: 'SELECT id FROM users WHERE username=?',
-    args: [ADMIN_USER],
-  });
-  if (r.rows.length === 0) {
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hash = crypto.scryptSync(ADMIN_PASS, salt, 64).toString('hex');
-    const now = Date.now();
-    const farFuture = now + 100 * 365 * 24 * 3600 * 1000;
-    await db.execute({
-      sql: `INSERT INTO users (username,password_hash,salt,created_at,expires_at,is_admin,payment_status)
-            VALUES (?,?,?,?,?,1,'paid')`,
-      args: [ADMIN_USER, hash, salt, now, farFuture],
-    });
-    console.log(`✅ สร้างแอดมินเริ่มต้น: ${ADMIN_USER}`);
-  }
-
-  await db.execute({ sql: 'DELETE FROM sessions WHERE expires_at < ?', args: [Date.now()] });
-}
-
-// ============================================================
-//  Helpers
-// ============================================================
-const hashPw = (pw, salt) => crypto.scryptSync(pw, salt, 64).toString('hex');
-const newToken = () => crypto.randomBytes(32).toString('hex');
-const newRef = () =>
-  'FD' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase();
-
-function toSafeUser(u) {
-  if (!u) return null;
-  return {
-    id: Number(u.id),
-    username: u.username,
-    password_hash: u.password_hash,
-    salt: u.salt,
-    created_at: Number(u.created_at) || 0,
-    expires_at: Number(u.expires_at) || 0,
-    is_admin: u.is_admin ? 1 : 0,
-    payment_status: u.payment_status,
-    payment_ref: u.payment_ref,
-    payment_expires_at: u.payment_expires_at ? Number(u.payment_expires_at) : null,
-    last_slip_url: u.last_slip_url,
-  };
-}
-
-function toSafeIntent(pi) {
-  if (!pi) return null;
-  return {
-    id: Number(pi.id),
-    ref: pi.ref,
-    user_id: Number(pi.user_id),
-    username: pi.username,
-    amount: Number(pi.amount) || 0,
-    status: pi.status,
-    created_at: Number(pi.created_at) || 0,
-    expires_at: Number(pi.expires_at) || 0,
-    paid_at: pi.paid_at ? Number(pi.paid_at) : null,
-    slip_qr_payload: pi.slip_qr_payload,
-    slip_image_url: pi.slip_image_url,
-    reject_reason: pi.reject_reason,
-    detected_name: pi.detected_name,
-    detected_time: pi.detected_time,
-    ocr_text: pi.ocr_text,
-    admin_note: pi.admin_note,
-  };
-}
-
-async function getUserFromReq(req) {
-  let token = req.cookies?.session;
-  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
-    token = req.headers.authorization.slice(7);
-  }
-  if (!token) return null;
-  const r = await db.execute({
-    sql: `SELECT u.*, s.expires_at AS session_exp
-          FROM sessions s JOIN users u ON u.id = s.user_id
-          WHERE s.token = ? AND s.expires_at > ?`,
-    args: [token, Date.now()],
-  });
-  return toSafeUser(r.rows[0]);
-}
-
-function setSessionCookie(res, token, maxAgeMs) {
-  res.cookie('session', token, {
-    httpOnly: true,
-    sameSite: IS_PROD ? 'none' : 'lax',
-    secure: IS_PROD,
-    maxAge: maxAgeMs,
-    path: '/',
-  });
-}
-
-async function createOrGetPendingIntent(user) {
-  const now = Date.now();
-  await db.execute({
-    sql: `UPDATE payment_intents SET status='expired'
-          WHERE user_id=? AND status='pending' AND expires_at <= ?`,
-    args: [user.id, now],
-  });
-  const cur = await db.execute({
-    sql: `SELECT * FROM payment_intents
-          WHERE user_id=? AND status='pending' AND expires_at > ?
-          ORDER BY id DESC LIMIT 1`,
-    args: [user.id, now],
-  });
-  if (cur.rows.length > 0) return toSafeIntent(cur.rows[0]);
-
-  const ref = newRef();
-  const payExp = now + PAYMENT_WINDOW_MS;
-  await db.execute({
-    sql: `INSERT INTO payment_intents (ref,user_id,username,amount,status,created_at,expires_at)
-          VALUES (?,?,?,?,?,?,?)`,
-    args: [ref, user.id, user.username, PAYMENT_AMOUNT, 'pending', now, payExp],
-  });
-  await db.execute({
-    sql: `UPDATE users SET payment_ref=?, payment_expires_at=? WHERE id=?`,
-    args: [ref, payExp, user.id],
-  });
-  const r = await db.execute({ sql: `SELECT * FROM payment_intents WHERE ref=?`, args: [ref] });
-  return toSafeIntent(r.rows[0]);
-}
-
-// ============================================================
-//  AUTH
-// ============================================================
-app.post('/api/register', async (req, res) => {
-  const { username, password } = req.body || {};
-  if (!username || !password) return res.status(400).json({ error: 'กรอกข้อมูลไม่ครบ' });
-  if (username.length < 3 || username.length > 32)
-    return res.status(400).json({ error: 'ชื่อผู้ใช้ต้อง 3–32 ตัวอักษร' });
-  if (!/^[A-Za-z0-9_\u0E00-\u0E7F]+$/.test(username))
-    return res.status(400).json({ error: 'ชื่อผู้ใช้ใช้ได้เฉพาะตัวอักษร ตัวเลข _ และภาษาไทย' });
-  if (password.length < 4) return res.status(400).json({ error: 'รหัสผ่านต้อง >= 4 ตัวอักษร' });
-
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = hashPw(password, salt);
-  const now = Date.now();
-
+$('formLogin').addEventListener('submit', async e => {
+  e.preventDefault();
+  setAuthMsg('กำลังเข้าสู่ระบบ...');
+  $('btnLogin').disabled = true;
   try {
-    const r = await db.execute({
-      sql: `INSERT INTO users (username,password_hash,salt,created_at,expires_at,is_admin,payment_status)
-            VALUES (?,?,?,?,?,0,'unpaid')`,
-      args: [username, hash, salt, now, 0],
+    const j = await api('POST', '/api/login', {
+      username: $('lUser').value.trim(),
+      password: $('lPass').value,
     });
-    const userId = Number(r.lastInsertRowid);
-
-    const token = newToken();
-    await db.execute({
-      sql: 'INSERT INTO sessions (token,user_id,expires_at) VALUES (?,?,?)',
-      args: [token, userId, now + SESSION_HOURS * 3600 * 1000],
-    });
-    setSessionCookie(res, token, SESSION_HOURS * 3600 * 1000);
-
-    const ref = newRef();
-    const payExp = now + PAYMENT_WINDOW_MS;
-    await db.execute({
-      sql: `INSERT INTO payment_intents (ref,user_id,username,amount,status,created_at,expires_at)
-            VALUES (?,?,?,?,?,?,?)`,
-      args: [ref, userId, username, PAYMENT_AMOUNT, 'pending', now, payExp],
-    });
-    await db.execute({
-      sql: `UPDATE users SET payment_ref=?, payment_expires_at=? WHERE id=?`,
-      args: [ref, payExp, userId],
-    });
-
-    res.json({
-      ok: true,
-      token,
-      username,
-      expires_at: 0,
-      is_admin: 0,
-      need_payment: true,
-      payment: {
-        ref,
-        amount: Number(PAYMENT_AMOUNT),
-        expires_at: Number(payExp),
-        reason: 'unpaid',
-      },
-    });
-  } catch (e) {
-    if (String(e.message).includes('UNIQUE'))
-      return res.status(400).json({ error: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว' });
-    console.error(e);
-    res.status(500).json({ error: 'เกิดข้อผิดพลาดภายใน' });
+    if (j.token) window.setToken(j.token);
+    setAuthMsg('สำเร็จ!', 'ok');
+    await sleep(300);
+    await afterLogin(j);
+  } catch (err) {
+    setAuthMsg(err.message, 'err');
+    $('btnLogin').disabled = false;
   }
 });
 
-app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body || {};
-  if (!username || !password) return res.status(400).json({ error: 'กรอกข้อมูลไม่ครบ' });
-
-  const r = await db.execute({ sql: 'SELECT * FROM users WHERE username=?', args: [username] });
-  if (r.rows.length === 0)
-    return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
-
-  const u = toSafeUser(r.rows[0]);
-  if (hashPw(password, u.salt) !== u.password_hash)
-    return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
-
-  const isAdmin = u.is_admin === 1;
-  const isUnpaid = !isAdmin && u.payment_status !== 'paid';
-  const isExpired = !isAdmin && u.payment_status === 'paid' && Date.now() > u.expires_at;
-  const needNewPayment = isUnpaid || isExpired;
-
-  let sessionExp;
-  if (isAdmin) sessionExp = u.expires_at;
-  else if (needNewPayment) sessionExp = Date.now() + SESSION_HOURS * 3600 * 1000;
-  else sessionExp = u.expires_at;
-
-  const token = newToken();
-  await db.execute({
-    sql: 'INSERT INTO sessions (token,user_id,expires_at) VALUES (?,?,?)',
-    args: [token, u.id, sessionExp],
-  });
-  setSessionCookie(res, token, Math.max(60_000, sessionExp - Date.now()));
-
-  let needPayment = false;
-  let payment = null;
-  if (needNewPayment) {
-    const pi = await createOrGetPendingIntent(u);
-    needPayment = true;
-    payment = {
-      ref: pi.ref,
-      amount: Number(pi.amount),
-      expires_at: Number(pi.expires_at),
-      reason: isExpired ? 'expired' : 'unpaid',
-    };
+$('formReg').addEventListener('submit', async e => {
+  e.preventDefault();
+  const p1 = $('rPass').value, p2 = $('rPass2').value;
+  if (p1 !== p2) return setAuthMsg('รหัสผ่านไม่ตรงกัน', 'err');
+  setAuthMsg('กำลังสมัครสมาชิก...');
+  $('btnReg').disabled = true;
+  try {
+    const j = await api('POST', '/api/register', {
+      username: $('rUser').value.trim(),
+      password: p1,
+    });
+    if (j.token) window.setToken(j.token);
+    setAuthMsg('สมัครสำเร็จ! กำลังไปหน้าชำระเงิน', 'ok');
+    await sleep(500);
+    await afterLogin(j);
+  } catch (err) {
+    setAuthMsg(err.message, 'err');
+    $('btnReg').disabled = false;
   }
-
-  res.json({
-    ok: true,
-    token,
-    username: u.username,
-    expires_at: Number(u.expires_at) || 0,
-    is_admin: isAdmin ? 1 : 0,
-    need_payment: needPayment,
-    payment,
-  });
 });
 
-app.post('/api/logout', async (req, res) => {
-  let token = req.cookies?.session;
-  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
-    token = req.headers.authorization.slice(7);
-  }
-  if (token) await db.execute({ sql: 'DELETE FROM sessions WHERE token=?', args: [token] });
-  res.clearCookie('session', {
-    path: '/',
-    sameSite: IS_PROD ? 'none' : 'lax',
-    secure: IS_PROD,
-  });
-  res.json({ ok: true });
-});
+// ============================================================
+//  Router หลัง login
+// ============================================================
+let me = null;
+let remainTimer = null;
+let payTimer = null;
+let slipTimer = null;
+let currentRef = null;
 
-app.get('/api/me', async (req, res) => {
-  const u = await getUserFromReq(req);
-  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
+async function afterLogin(data) {
+  console.log('🔍 afterLogin data:', JSON.stringify(data));
+  me = data;
 
-  const isAdmin = u.is_admin === 1;
-  const isUnpaid = !isAdmin && u.payment_status !== 'paid';
-  const isExpired = !isAdmin && u.payment_status === 'paid' && Date.now() > u.expires_at;
-  const needNewPayment = isUnpaid || isExpired;
+  // ✅ เช็ค admin ก่อน
+  const isAdmin = data.is_admin === 1 || data.is_admin === true || data.is_admin === '1';
+  console.log('🔍 isAdmin?', isAdmin, '| is_admin =', data.is_admin, '(', typeof data.is_admin, ')');
 
-  let needPayment = false;
-  let payment = null;
-  if (needNewPayment) {
-    const pi = await createOrGetPendingIntent(u);
-    needPayment = true;
-    payment = {
-      ref: pi.ref,
-      amount: Number(pi.amount),
-      expires_at: Number(pi.expires_at),
-      reason: isExpired ? 'expired' : 'unpaid',
-    };
+  if (isAdmin) {
+    me.is_admin = 1;
+    await enterAdmin();
+    return;
   }
 
-  res.json({
-    username: u.username,
-    expires_at: Number(u.expires_at) || 0,
-    is_admin: isAdmin ? 1 : 0,
-    created_at: Number(u.created_at) || 0,
-    need_payment: needPayment,
-    payment,
-  });
-});
+  if (data.need_payment) { enterPayment(data.payment); return; }
+  enterApp();
+}
 
 // ============================================================
 //  PAYMENT
 // ============================================================
-app.post('/api/payment/new', async (req, res) => {
-  const u = await getUserFromReq(req);
-  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
-  if (u.payment_status === 'paid' && Date.now() < u.expires_at)
-    return res.json({ ok: true, already_paid: true });
+function enterPayment(payment) {
+  if (!payment) {
+    api('POST', '/api/payment/new').then(j => {
+      if (j.already_paid) { enterApp(); return; }
+      enterPayment(j);
+    }).catch(e => setPayMsg(e.message, 'err'));
+    return;
+  }
+  currentRef = payment.ref;
+  showView('view-pay');
+  $('payRef').textContent = payment.ref;
 
-  const now = Date.now();
-  const ref = newRef();
-  const payExp = now + PAYMENT_WINDOW_MS;
+  if (payment.reason === 'expired') {
+    setPayMsg('⏰ หมดอายุการใช้งานแล้ว กรุณาชำระเงินเพื่อใช้งานต่อ (24 ชม.)', 'err');
+  } else {
+    setPayMsg('สแกน QR เพื่อชำระเงิน แล้วกด "อัพโหลดสลิป"', 'info');
+  }
 
-  await db.execute({
-    sql: `INSERT INTO payment_intents (ref,user_id,username,amount,status,created_at,expires_at)
-          VALUES (?,?,?,?,?,?,?)`,
-    args: [ref, u.id, u.username, PAYMENT_AMOUNT, 'pending', now, payExp],
-  });
-  await db.execute({
-    sql: `UPDATE users SET payment_ref=?, payment_expires_at=? WHERE id=?`,
-    args: [ref, payExp, u.id],
-  });
+  $('btnNewRef').style.display = 'none';
+  startPayCountdown(payment.expires_at);
+}
 
-  res.json({ ok: true, ref, amount: Number(PAYMENT_AMOUNT), expires_at: Number(payExp) });
-});
+function startPayCountdown(expiresAt) {
+  clearInterval(payTimer);
+  const tick = () => {
+    const ms = expiresAt - Date.now();
+    const el = $('payTimer');
+    if (ms <= 0) {
+      el.textContent = 'หมดเวลา';
+      el.classList.add('warn');
+      clearInterval(payTimer);
+      setPayMsg('⌛ หมดเวลา 15 นาที กรุณากด "ขอเวลาใหม่"', 'err');
+      $('btnNewRef').style.display = '';
+      return;
+    }
+    el.textContent = fmtRemain(ms);
+    el.classList.toggle('warn', ms < 120000);
+  };
+  tick();
+  payTimer = setInterval(tick, 1000);
+}
 
-app.get('/api/payment/status', async (req, res) => {
-  const u = await getUserFromReq(req);
-  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
+$('btnOpenSlip').onclick = () => {
+  showView('view-slip');
+  setSlipMsg('เลือกไฟล์สลิปแล้วกด "ตรวจสอบสลิป"', 'info');
+  $('slipPreview').style.display = 'none';
+  $('slipFile').value = '';
+  $('btnUploadSlip').disabled = false;
+  startSlipCountdown();
+};
 
-  if (u.payment_status === 'paid' && Date.now() < u.expires_at)
-    return res.json({ ok: true, paid: true });
+function startSlipCountdown() {
+  api('GET', '/api/payment/status?ref=' + encodeURIComponent(currentRef))
+    .then(j => {
+      clearInterval(slipTimer);
+      const exp = j.expires_at || (Date.now() + 15 * 60 * 1000);
+      const tick = () => {
+        const ms = exp - Date.now();
+        const el = $('slipTimer');
+        if (ms <= 0) {
+          el.textContent = 'หมดเวลา';
+          el.classList.add('warn');
+          clearInterval(slipTimer);
+          return;
+        }
+        el.textContent = fmtRemain(ms);
+        el.classList.toggle('warn', ms < 120000);
+      };
+      tick();
+      slipTimer = setInterval(tick, 1000);
+    })
+    .catch(() => {});
+}
 
-  const ref = req.query.ref;
-  const r = await db.execute({
-    sql: `SELECT * FROM payment_intents WHERE ref=? AND user_id=?`,
-    args: [ref, u.id],
-  });
-  if (r.rows.length === 0) return res.json({ ok: true, paid: false });
+$('slipFile').onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  const img = $('slipPreview');
+  img.src = url;
+  img.style.display = 'block';
+};
 
-  const pi = toSafeIntent(r.rows[0]);
-  res.json({
-    ok: true,
-    paid: pi.status === 'paid',
-    status: pi.status,
-    reject_reason: pi.reject_reason,
-    expires_at: Number(pi.expires_at) || 0,
-  });
-});
+$('btnBackPay').onclick = () => showView('view-pay');
 
-app.get('/api/payment/paid', async (req, res) => {
-  const u = await getUserFromReq(req);
-  if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
-  if (u.payment_status !== 'paid') return res.json({ ok: true, paid: false });
-  if (Date.now() > u.expires_at)
-    return res.status(403).json({ error: 'หมดอายุ' });
-
-  res.json({
-    ok: true,
-    paid: true,
-    username: u.username,
-    expires_at: Number(u.expires_at) || 0,
-    is_admin: u.is_admin ? 1 : 0,
-  });
-});
-
-app.post('/api/payment/upload-slip', upload.single('slip'), async (req, res) => {
+$('btnNewRef').onclick = async () => {
   try {
-    const u = await getUserFromReq(req);
-    if (!u) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
-    if (u.payment_status === 'paid' && Date.now() < u.expires_at)
-      return res.json({ ok: true, paid: true });
+    const j = await api('POST', '/api/payment/new');
+    if (j.already_paid) { enterApp(); return; }
+    enterPayment(j);
+  } catch (e) { setPayMsg(e.message, 'err'); }
+};
 
-    if (!req.file) return res.json({ ok: false, msg: 'กรุณาแนบรูปสลิป' });
+$('btnPayLogout').onclick = async () => {
+  clearInterval(payTimer); clearInterval(slipTimer);
+  await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+  window.setToken('');
+  me = null;
+  showView('view-auth');
+  setAuthMsg('');
+};
 
-    const { ref } = req.body || {};
-    const pi = await db.execute({
-      sql: `SELECT * FROM payment_intents WHERE ref=? AND user_id=?`,
-      args: [ref, u.id],
-    });
-    if (pi.rows.length === 0) return res.json({ ok: false, msg: 'ไม่พบรายการชำระเงิน' });
+// ============================================================
+//  Upload slip
+// ============================================================
+$('formSlip').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = $('slipFile').files[0];
+  if (!f) return setSlipMsg('กรุณาเลือกไฟล์รูปสลิป', 'err');
 
-    const intent = toSafeIntent(pi.rows[0]);
-    const now = Date.now();
+  const btn = $('btnUploadSlip');
+  btn.disabled = true;
+  setSlipMsg('🔍 กำลังตรวจสอบสลิป (QR + OCR) กรุณารอ 10–30 วินาที...', 'info');
 
-    if (intent.status === 'paid') return res.json({ ok: true, paid: true, msg: 'ชำระแล้ว' });
-    if (now > intent.expires_at)
-      return res.json({
-        ok: false,
-        expired: true,
-        msg: `❌ หมดเวลา ${PAYMENT_WINDOW_MIN} นาทีแล้ว กรุณากด "ขอเวลาใหม่"`,
-      });
+  const fd = new FormData();
+  fd.append('slip', f);
+  fd.append('ref', currentRef);
 
-    console.log('🔍 สแกน QR...');
-    let qrPayload = null;
-    try {
-      const img = await Jimp.read(req.file.buffer);
-      const qr = jsQR(
-        new Uint8ClampedArray(img.bitmap.data),
-        img.bitmap.width,
-        img.bitmap.height
-      );
-      if (qr) qrPayload = qr.data;
-    } catch (e) {
-      console.error('QR decode error:', e.message);
+  try {
+    const r = await fetch('/api/payment/upload-slip', { method: 'POST', body: fd });
+    const j = await r.json();
+
+    if (j.ok && j.paid) {
+      setSlipMsg('✅ ' + (j.msg || 'ตรวจสอบสำเร็จ!'), 'ok');
+      toast('ชำระเงินสำเร็จ 🎉');
+      clearInterval(payTimer); clearInterval(slipTimer);
+
+      setTimeout(async () => {
+        try {
+          const r2 = await fetch('/api/payment/paid');
+          if (r2.ok) {
+            const meData = await r2.json();
+            me = meData;
+            enterApp();
+          } else {
+            location.reload();
+          }
+        } catch { location.reload(); }
+      }, 800);
+    } else if (j.expired) {
+      setSlipMsg(j.msg, 'err');
+      $('btnNewRef').style.display = '';
+      btn.disabled = false;
+    } else {
+      setSlipMsg(j.msg || '❌ สลิปไม่ถูกต้อง ลองใหม่อีกครั้ง', 'err');
+      btn.disabled = false;
     }
-    if (!qrPayload) {
-      return res.json({ ok: false, msg: '❌ ไม่พบ QR Code บนสลิป หรือรูปไม่ชัดเจน' });
-    }
-
-    const used = await db.execute({
-      sql: `SELECT id FROM payment_intents WHERE slip_qr_payload=? AND status='paid'`,
-      args: [qrPayload],
-    });
-    if (used.rows.length > 0) {
-      return res.json({ ok: false, msg: '❌ สลิปนี้ถูกใช้ยืนยันไปแล้ว' });
-    }
-
-    console.log('🔍 OCR กำลังอ่านข้อความ...');
-    const { data: { text } } = await Tesseract.recognize(req.file.buffer, 'tha+eng');
-    const clean = text.replace(/\s+/g, '');
-    const cleanUpper = clean.toUpperCase();
-
-    const amtStr = String(PAYMENT_AMOUNT);
-    if (!clean.includes(amtStr + '.00') && !clean.includes(amtStr)) {
-      return res.json({ ok: false, msg: `❌ ไม่พบยอดเงิน ${PAYMENT_AMOUNT} บาทในสลิป` });
-    }
-
-    const nameCandidates = [
-      EXPECTED_NAME.replace(/\s+/g, ''),
-      EXPECTED_NAME_EN.replace(/\s+/g, '').toUpperCase(),
-    ].filter(Boolean);
-
-    if (nameCandidates.length > 0) {
-      const matched = nameCandidates.find(n => {
-        if (/^[A-Z0-9]+$/.test(n)) return cleanUpper.includes(n);
-        return clean.includes(n);
-      });
-      if (!matched) {
-        return res.json({
-          ok: false,
-          msg: `❌ ชื่อผู้รับไม่ตรงกับร้าน (ต้องมี "${EXPECTED_NAME}" หรือ "${EXPECTED_NAME_EN}")`,
-        });
-      }
-    }
-
-    if (EXPECTED_LAST4 && !clean.includes(EXPECTED_LAST4))
-      return res.json({ ok: false, msg: '❌ เลขบัญชี 4 ตัวท้ายไม่ตรง' });
-
-    const tm = clean.match(/(\d{2}):(\d{2})/);
-    if (tm) {
-      const hh = +tm[1], mm = +tm[2];
-      const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
-      let diff = (bkk.getHours() * 60 + bkk.getMinutes()) - (hh * 60 + mm);
-      if (diff < -1000) diff += 1440;
-      if (diff > PAYMENT_WINDOW_MIN)
-        return res.json({ ok: false, msg: `❌ สลิปเก่าเกิน ${PAYMENT_WINDOW_MIN} นาที` });
-      if (diff < -5) return res.json({ ok: false, msg: '❌ เวลาในสลิปผิดปกติ' });
-    }
-
-    const ext = path.extname(req.file.originalname) || '.jpg';
-    const fname = `slip_${u.username}_${now}${ext}`;
-    const fpath = path.join(SLIPS_DIR, fname);
-    fs.writeFileSync(fpath, req.file.buffer);
-    const slipUrl = `/slips/${fname}`;
-
-    const detectedTime = tm ? `${tm[1]}:${tm[2]}` : null;
-    const detectedName =
-      (EXPECTED_NAME && clean.includes(EXPECTED_NAME.replace(/\s+/g, '')) ? EXPECTED_NAME : null) ||
-      (EXPECTED_NAME_EN && cleanUpper.includes(EXPECTED_NAME_EN.replace(/\s+/g, '').toUpperCase()) ? EXPECTED_NAME_EN : null);
-
-    await db.execute({
-      sql: `UPDATE payment_intents
-            SET status='paid', paid_at=?, slip_qr_payload=?, slip_image_url=?,
-                detected_name=?, detected_time=?, ocr_text=?
-            WHERE id=?`,
-      args: [now, qrPayload, slipUrl, detectedName, detectedTime, clean.slice(0, 2000), intent.id],
-    });
-
-    const base = Math.max(now, u.expires_at || 0);
-    const userExpiry = base + SESSION_HOURS * 3600 * 1000;
-
-    await db.execute({
-      sql: `UPDATE users SET payment_status='paid', last_slip_url=?, expires_at=? WHERE id=?`,
-      args: [slipUrl, userExpiry, u.id],
-    });
-    await db.execute({
-      sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
-      args: [userExpiry, u.id],
-    });
-
-    console.log(`✅ อนุมัติ: ${u.username} — หมดอายุ ${new Date(userExpiry).toLocaleString('th-TH')}`);
-    res.json({ ok: true, paid: true, msg: '✅ ตรวจสอบสลิปสำเร็จ!', expires_at: Number(userExpiry) });
-  } catch (e) {
-    console.error('verify-slip error:', e);
-    res.status(500).json({ ok: false, msg: 'อ่านภาพไม่สำเร็จ: ' + e.message });
+  } catch (err) {
+    setSlipMsg('เกิดข้อผิดพลาด: ' + err.message, 'err');
+    btn.disabled = false;
   }
 });
+
+// ============================================================
+//  Detector
+// ============================================================
+const HP = [[1,3,2],[4,5,6],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
+[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[3,6,5],[1,3,2],[1,5,2],[4,6,5],[1,4,3]];
+const LP = [[1,3,2],[4,5,6],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
+[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[3,6,5],[1,3,2],[1,5,2],[4,6,5],[1,4,3]];
+
+const highBands = HP.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
+const lowBands  = LP.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
+
+const S = { mode: 0, range: 0, start: 400, buf: 64 };
+let ctx, analyser, stream, detectTimer;
+let busy = false, skipCount = 0;
+const MAX_SKIP = 2;
+
+$$('.seg').forEach(g => g.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  g.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  S[g.dataset.k] = +b.dataset.v;
+  if (g.dataset.k === 'mode') skipCount = 0;
+}));
+$('th').oninput = e => $('thv').textContent = (+e.target.value).toFixed(3);
+
+async function beep(ms) {
+  if ($('sFls').checked) document.body.classList.add('flash');
+  if ($('sVib').checked && navigator.vibrate) navigator.vibrate(ms);
+  let o;
+  if ($('sSnd').checked && ctx) {
+    o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = 880;
+    g.gain.value = 0.4;
+    o.connect(g).connect(ctx.destination);
+    o.start();
+  }
+  await sleep(ms);
+  if (o) o.stop();
+  document.body.classList.remove('flash');
+}
+async function playAlert(n) { for (let j = 0; j < n; j++) { await beep(300); await sleep(300); } }
+async function playPattern(p) {
+  if (p === 6) await beep(1000);
+  else await playAlert(p);
+}
+async function alertModeA(band) {
+  const n = band.pats.length;
+  if (!n) return;
+  const a = Math.floor(Math.random() * n);
+  let b; do { b = Math.floor(Math.random() * n); } while (b === a);
+  await sleep(1000); await playPattern(band.pats[a]);
+  await sleep(1000); await playPattern(band.pats[b]);
+}
+async function alertModeB(band) {
+  let skip = false;
+  if (skipCount < MAX_SKIP) skip = Math.floor(Math.random() * 3) !== 0;
+  if (skip) { skipCount++; return; }
+  skipCount = 0;
+  await sleep(1000); await beep(1000);
+}
+
+function detect() {
+  if (busy || !analyser || !ctx) return;
+  const sr = ctx.sampleRate;
+  const N = Math.max(32, Math.round(S.buf / 16000 * sr));
+  const all = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(all);
+  const x = all.subarray(all.length - N);
+
+  let sum = 0;
+  for (let i = 0; i < N; i++) sum += x[i] * x[i];
+  const rms = Math.sqrt(sum / N);
+  $('lv').style.width = Math.min(100, rms / 0.2 * 100) + '%';
+  if (rms < +$('th').value) { $('band').textContent = 'เงียบ'; return; }
+
+  const end = S.range ? 3500 : 4000;
+  let best = 0, dom = 0;
+  for (let f = S.start; f <= end; f += 10) {
+    const c = 2 * Math.cos(2 * Math.PI * f / sr);
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i < N; i++) { const s0 = x[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+    const p = s1 * s1 + s2 * s2 - c * s1 * s2;
+    if (p > best) { best = p; dom = f; }
+  }
+
+  const bands = S.range ? lowBands : highBands;
+  const i = bands.findIndex(b => dom >= b.lower && dom <= b.upper);
+  if (i < 0) { $('band').textContent = 'นอกย่านที่กำหนด'; return; }
+  const b = bands[i];
+  $('band').textContent = `ย่าน ${i+1} (${b.lower}–${b.upper} Hz)`;
+
+  busy = true;
+  (async () => {
+    try { await (S.mode ? alertModeB(b) : alertModeA(b)); }
+    finally { await sleep(300); busy = false; }
+  })();
+}
+
+async function startDetector() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  } catch (e) {
+    $('band').textContent = 'ไม่ได้รับอนุญาตใช้ไมค์';
+    return;
+  }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 8192;
+  analyser.smoothingTimeConstant = 0;
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  detectTimer = setInterval(detect, 40);
+  $('go').textContent = 'หยุดการตรวจจับ';
+  $('go').classList.add('stop');
+}
+function stopDetector() {
+  clearInterval(detectTimer); detectTimer = null;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (ctx) ctx.close();
+  ctx = analyser = stream = null;
+  busy = false;
+  $('go').textContent = 'เริ่มการตรวจจับ';
+  $('go').classList.remove('stop');
+  $('band').textContent = 'หยุดแล้ว';
+  $('lv').style.width = '0';
+}
+$('go').onclick = () => (ctx ? stopDetector() : startDetector());
+
+const cv = $('wave'), g2 = cv.getContext('2d');
+let wbuf;
+function draw() {
+  requestAnimationFrame(draw);
+  if (!cv.clientWidth) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr)) {
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  g2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g2.clearRect(0, 0, w, h);
+  const mid = h / 2, gain = 4;
+  g2.strokeStyle = '#26261f'; g2.lineWidth = 1; g2.beginPath();
+  for (let i = 1; i < 4; i++) { g2.moveTo(0, h * i / 4); g2.lineTo(w, h * i / 4); }
+  for (let i = 1; i < 8; i++) { g2.moveTo(w * i / 8, 0); g2.lineTo(w * i / 8, h); }
+  g2.stroke();
+
+  const th = +$('th').value * gain * mid * 0.95;
+  g2.setLineDash([5, 5]);
+  g2.strokeStyle = 'rgba(255,196,0,.35)';
+  g2.beginPath();
+  g2.moveTo(0, mid - th); g2.lineTo(w, mid - th);
+  g2.moveTo(0, mid + th); g2.lineTo(w, mid + th);
+  g2.stroke();
+  g2.setLineDash([]);
+
+  g2.strokeStyle = busy ? '#fff' : '#ffc400';
+  g2.lineWidth = busy ? 2.5 : 1.75;
+  g2.beginPath();
+  if (analyser) {
+    if (!wbuf || wbuf.length !== analyser.fftSize) wbuf = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(wbuf);
+    const n = 384, off = wbuf.length - n;
+    for (let i = 0; i < w; i++) {
+      const v = wbuf[off + Math.floor(i / w * n)];
+      const y = mid - Math.max(-1, Math.min(1, v * gain)) * mid * 0.95;
+      i ? g2.lineTo(i, y) : g2.moveTo(i, y);
+    }
+  } else { g2.moveTo(0, mid); g2.lineTo(w, mid); }
+  g2.stroke();
+}
+draw();
+
+// ============================================================
+//  Remain timer
+// ============================================================
+function startRemainTimer() {
+  clearInterval(remainTimer);
+  let notified = false;
+
+  if (me && (me.is_admin === 1 || me.is_admin === true || me.is_admin === '1')) {
+    const el = $('remain');
+    if (el) { el.textContent = 'ADMIN'; el.classList.remove('warn'); }
+    return;
+  }
+
+  const update = () => {
+    if (!me) return;
+
+    const expiresAt = Number(me.expires_at);
+    if (!expiresAt || isNaN(expiresAt) || expiresAt <= 0) {
+      const el = $('remain');
+      if (el) el.textContent = '--:--';
+      return;
+    }
+
+    const ms = expiresAt - Date.now();
+    const el = $('remain');
+    if (!el) return;
+
+    if (ms > 0) {
+      const d = Math.floor(ms / 86400000);
+      const h = Math.floor((ms % 86400000) / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      const s = Math.floor((ms % 60000) / 1000);
+
+      let txt;
+      if (d > 0)      txt = `${d}วัน ${h}ชม. ${m}นาที ${String(s).padStart(2,'0')}วิ`;
+      else if (h > 0) txt = `${h}ชม. ${m}นาที ${String(s).padStart(2,'0')}วิ`;
+      else            txt = `${m}นาที ${String(s).padStart(2,'0')}วิ`;
+      el.textContent = txt;
+      el.classList.toggle('warn', ms < 3600000);
+      return;
+    }
+
+    el.textContent = 'หมดเวลา';
+    el.classList.add('warn');
+    clearInterval(remainTimer);
+    if (notified) return;
+    notified = true;
+
+    stopDetector();
+    toast('⏰ หมดเวลาการใช้งานแล้ว กรุณาเข้าสู่ระบบเพื่อชำระเงินต่อ', 3000);
+
+    setTimeout(() => {
+      fetch('/api/logout', { method: 'POST' }).finally(() => {
+        me = null;
+        window.setToken('');
+        showView('view-auth');
+        setAuthMsg('⏰ หมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่', 'err');
+      });
+    }, 3000);
+  };
+
+  update();
+  remainTimer = setInterval(update, 1000);
+}
+
+function enterApp() {
+  if (me && (me.is_admin === 1 || me.is_admin === true || me.is_admin === '1')) {
+    enterAdmin();
+    return;
+  }
+  showView('view-app');
+  startRemainTimer();
+}
+
+async function doLogout() {
+  stopDetector();
+  clearInterval(remainTimer); clearInterval(payTimer); clearInterval(slipTimer);
+  await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+  window.setToken('');
+  me = null;
+  showView('view-auth');
+  setAuthMsg('');
+  $('lUser').value = ''; $('lPass').value = '';
+  $('rUser').value = ''; $('rPass').value = ''; $('rPass2').value = '';
+}
+$('btnLogout').onclick = doLogout;
 
 // ============================================================
 //  Admin
 // ============================================================
-async function requireAdmin(req, res, next) {
-  const u = await getUserFromReq(req);
-  if (!u || !u.is_admin) return res.status(403).json({ error: 'ต้องเป็นแอดมิน' });
-  req.admin = u;
-  next();
+let adminUsers = [];
+let adminTimer = null;
+let cdTimer = null;
+
+async function enterAdmin() {
+  showView('view-admin');
+  $('adminWho').textContent = '👤 ' + me.username;
+  await loadUsers();
+  startCountdownTimer();
+  clearInterval(adminTimer);
+  adminTimer = setInterval(loadUsers, 30000);
 }
 
-app.get('/api/admin/users', requireAdmin, async (_req, res) => {
-  const r = await db.execute(
-    `SELECT id, username, created_at, expires_at, is_admin, payment_status, last_slip_url
-     FROM users ORDER BY id ASC`
-  );
-  const rows = r.rows.map(u => ({
-    id: Number(u.id),
-    username: u.username,
-    created_at: Number(u.created_at) || 0,
-    expires_at: Number(u.expires_at) || 0,
-    is_admin: u.is_admin ? 1 : 0,
-    payment_status: u.payment_status,
-    last_slip_url: u.last_slip_url,
-  }));
-  res.json(rows);
-});
-
-app.get('/api/admin/users/:id/slips', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const r = await db.execute({
-    sql: `SELECT id, ref, amount, status, created_at, expires_at, paid_at,
-                 slip_image_url, slip_qr_payload, detected_name, detected_time,
-                 ocr_text, admin_note, reject_reason
-          FROM payment_intents
-          WHERE user_id=?
-          ORDER BY id DESC`,
-    args: [id],
-  });
-  res.json(r.rows.map(x => toSafeIntent(x)));
-});
-
-app.post('/api/admin/payments/:id/note', requireAdmin, async (req, res) => {
-  const { note } = req.body || {};
-  const id = Number(req.params.id);
-  if (typeof note !== 'string' || note.length > 500)
-    return res.status(400).json({ error: 'หมายเหตุไม่ถูกต้อง' });
-  await db.execute({
-    sql: 'UPDATE payment_intents SET admin_note=? WHERE id=?',
-    args: [note, id],
-  });
-  res.json({ ok: true });
-});
-
-app.delete('/api/admin/payments/:id/slip', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const r = await db.execute({
-    sql: 'SELECT user_id, slip_image_url FROM payment_intents WHERE id=?',
-    args: [id],
-  });
-  if (r.rows.length === 0) return res.status(404).json({ error: 'ไม่พบสลิป' });
-
-  const user_id = Number(r.rows[0].user_id);
-  const slip_image_url = r.rows[0].slip_image_url;
-
-  if (slip_image_url) {
-    const fpath = path.join(SLIPS_DIR, path.basename(slip_image_url));
-    try { fs.unlinkSync(fpath); } catch {}
+async function loadUsers() {
+  try {
+    adminUsers = await api('GET', '/api/admin/users');
+    renderUsers();
+    tickCountdowns();
+  } catch (e) {
+    toast('โหลดผู้ใช้ล้มเหลว: ' + e.message);
   }
+}
 
-  await db.execute({
-    sql: `UPDATE payment_intents
-          SET status='rejected', slip_image_url=NULL, slip_qr_payload=NULL,
-              reject_reason='admin rejected', detected_name=NULL, detected_time=NULL
-          WHERE id=?`,
-    args: [id],
-  });
-  await db.execute({
-    sql: `UPDATE users SET payment_status='unpaid', last_slip_url=NULL, expires_at=0 WHERE id=?`,
-    args: [user_id],
-  });
-  await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [user_id],
-  });
-
-  res.json({ ok: true });
-});
-
-app.post('/api/admin/users/:id/approve-payment', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
+function renderUsers() {
   const now = Date.now();
+  const q = ($('searchBox').value || '').toLowerCase();
+  const list = q
+    ? adminUsers.filter(u => u.username.toLowerCase().includes(q))
+    : adminUsers;
 
-  const cur = await db.execute({
-    sql: 'SELECT expires_at FROM users WHERE id=?',
-    args: [id],
-  });
-  if (cur.rows.length === 0) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  const total   = adminUsers.filter(u => !u.is_admin).length;
+  const active  = adminUsers.filter(u =>
+    !u.is_admin && u.payment_status === 'paid' && u.expires_at > now
+  ).length;
+  $('statTotal').textContent   = total;
+  $('statActive').textContent  = active;
+  $('statExpired').textContent = total - active;
 
-  const curExp = Number(cur.rows[0].expires_at) || 0;
-  const base = Math.max(now, curExp);
-  const newExp = base + SESSION_HOURS * 3600 * 1000;
-
-  await db.execute({
-    sql: `UPDATE users SET payment_status='paid', expires_at=? WHERE id=? AND is_admin=0`,
-    args: [newExp, id],
-  });
-  await db.execute({
-    sql: `UPDATE payment_intents SET status='paid', paid_at=?
-          WHERE user_id=? AND status='pending'`,
-    args: [now, id],
-  });
-  await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [id],
-  });
-
-  res.json({ ok: true, expires_at: Number(newExp) });
-});
-
-app.post('/api/admin/users/:id/extend', requireAdmin, async (req, res) => {
-  const { hours } = req.body || {};
-  const id = Number(req.params.id);
-  if (!Number.isFinite(hours) || hours === 0 || Math.abs(hours) > 100000)
-    return res.status(400).json({ error: 'hours ไม่ถูกต้อง' });
-
-  const r = await db.execute({
-    sql: 'SELECT expires_at, is_admin FROM users WHERE id=?',
-    args: [id],
-  });
-  if (r.rows.length === 0) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
-  if (r.rows[0].is_admin) return res.status(400).json({ error: 'แก้เวลาแอดมินไม่ได้' });
-
-  const curExp = Number(r.rows[0].expires_at) || 0;
-  const base = Math.max(Date.now(), curExp);
-  const newExp = Math.max(Date.now(), base + hours * 3600 * 1000);
-
-  await db.execute({ sql: 'UPDATE users SET expires_at=? WHERE id=?', args: [newExp, id] });
-  await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [id],
-  });
-
-  res.json({ ok: true, expires_at: Number(newExp) });
-});
-
-app.post('/api/admin/users/:id/set-time', requireAdmin, async (req, res) => {
-  const { expires_at } = req.body || {};
-  const id = Number(req.params.id);
-  if (!Number.isFinite(expires_at) || expires_at < 0)
-    return res.status(400).json({ error: 'expires_at ไม่ถูกต้อง' });
-
-  const r = await db.execute({
-    sql: 'SELECT is_admin FROM users WHERE id=?',
-    args: [id],
-  });
-  if (r.rows.length === 0) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
-  if (r.rows[0].is_admin) return res.status(400).json({ error: 'แก้เวลาแอดมินไม่ได้' });
-
-  const isFuture = expires_at > Date.now();
-  if (isFuture) {
-    await db.execute({
-      sql: `UPDATE users SET expires_at=?, payment_status='paid' WHERE id=?`,
-      args: [expires_at, id],
-    });
-    await db.execute({
-      sql: `UPDATE payment_intents SET status='paid', paid_at=?
-            WHERE user_id=? AND status IN ('pending','expired')`,
-      args: [Date.now(), id],
-    });
-  } else {
-    await db.execute({
-      sql: `UPDATE users SET expires_at=? WHERE id=?`,
-      args: [expires_at, id],
-    });
+  if (!list.length) {
+    $('rows').innerHTML = '<tr><td colspan="7" style="color:var(--mu);text-align:center">ไม่พบผู้ใช้</td></tr>';
+    return;
   }
-  await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [id],
+
+  $('rows').innerHTML = list.map(u => {
+    const exp = !u.is_admin && u.payment_status === 'paid' && u.expires_at < now;
+    const rowClass = exp ? 'expired' : '';
+    const statusTag = u.is_admin
+      ? '<span class="tag">ใช้งานได้</span>'
+      : u.payment_status !== 'paid'
+        ? '<span class="tag exp">ใช้งานไม่ได้</span>'
+        : exp
+          ? '<span class="tag exp">หมดอายุ</span>'
+          : '<span class="tag">ใช้งานได้</span>';
+    const adminTag = u.is_admin ? ' <span class="tag admin">ADMIN</span>' : '';
+    const payTag = u.is_admin
+      ? ''
+      : u.payment_status === 'paid'
+        ? ' <span class="tag paid">✓ จ่ายแล้ว</span>'
+        : ' <span class="tag unpaid">ยังไม่จ่าย</span>';
+
+    const isUnpaid = !u.is_admin && u.payment_status !== 'paid';
+    const cdCell = u.is_admin || isUnpaid
+      ? '<span style="color:var(--mu)">—</span>'
+      : `<span class="cd" data-cd="${u.expires_at}">--</span>`;
+
+    const actionBtns = u.is_admin
+      ? '<span style="color:var(--mu);font-size:.8rem">—</span>'
+      : `<div class="actions">
+          ${u.payment_status !== 'paid'
+            ? `<button class="btn sm" data-act="approve" data-id="${u.id}">✓ อนุมัติจ่าย</button>`
+            : ''}
+          ${u.last_slip_url || u.payment_status === 'paid'
+            ? `<button class="btn sm" data-act="slip" data-id="${u.id}" data-user="${escapeHtml(u.username)}">📄 สลิป</button>`
+            : ''}
+          <button class="btn sm" data-act="ext" data-h="1"  data-id="${u.id}">+1ชม</button>
+          <button class="btn sm" data-act="ext" data-h="24" data-id="${u.id}">+24ชม</button>
+          <button class="btn sm" data-act="ext" data-h="-24" data-id="${u.id}">-24ชม</button>
+          <button class="btn sm sec" data-act="time" data-id="${u.id}">ตั้งเวลา</button>
+          <button class="btn sm sec" data-act="pass" data-id="${u.id}">ตั้งรหัส</button>
+          <button class="btn sm danger" data-act="del" data-id="${u.id}" data-name="${escapeHtml(u.username)}">ลบ</button>
+        </div>`;
+
+        return `<tr class="${rowClass}" data-id="${u.id}">
+      <td data-label="ID">${u.id}</td>
+      <td data-label="ชื่อผู้ใช้" class="col-user">${escapeHtml(u.username)}${adminTag}${payTag}</td>
+      <td data-label="สมัครเมื่อ" class="col-created">${fmtThai(u.created_at)}</td>
+      <td data-label="หมดอายุ" class="col-expires">${fmtThai(u.expires_at)}</td>
+      <td data-label="เหลืออีก" class="col-cd">${cdCell}</td>
+      <td data-label="สถานะ" class="col-status">${statusTag}</td>
+      <td data-label="จัดการ" class="col-actions">${actionBtns}</td>
+    </tr>`;
+  }).join('');
+
+  // ✅ ตรวจ ID กระโดด
+  checkIdGaps();
+}
+
+function tickCountdowns() {
+  const now = Date.now();
+  document.querySelectorAll('.cd[data-cd]').forEach(el => {
+    const exp = Number(el.dataset.cd);
+    const ms = exp - now;
+    if (ms <= 0) { el.textContent = 'หมดอายุ'; el.className = 'cd dead'; return; }
+
+    const d = Math.floor(ms / 86400000);
+    const h = Math.floor((ms % 86400000) / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+
+    let txt;
+    if (ms >= 3600000) {
+      if (d > 0) txt = `${d}วัน ${h}ชม. ${m}นาที`;
+      else       txt = `${h}ชม. ${m}นาที`;
+    } else {
+      txt = `${m}นาที ${String(s).padStart(2,'0')}วิ`;
+    }
+    el.textContent = txt;
+
+    if (ms < 5 * 60000)    el.className = 'cd danger';
+    else if (ms < 3600000) el.className = 'cd warn';
+    else                   el.className = 'cd ok';
   });
+}
 
-  res.json({ ok: true, expires_at: Number(expires_at) });
-});
+function startCountdownTimer() {
+  clearInterval(cdTimer);
+  tickCountdowns();
+  cdTimer = setInterval(tickCountdowns, 1000);
+}
 
-app.post('/api/admin/users/:id/password', requireAdmin, async (req, res) => {
-  const { password } = req.body || {};
-  const id = Number(req.params.id);
-  if (!password || password.length < 4)
-    return res.status(400).json({ error: 'รหัสผ่านต้อง >= 4 ตัวอักษร' });
+function stopCountdownTimer() {
+  clearInterval(cdTimer);
+  cdTimer = null;
+}
 
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = hashPw(password, salt);
-  await db.execute({
-    sql: 'UPDATE users SET password_hash=?, salt=? WHERE id=? AND is_admin=0',
-    args: [hash, salt, id],
-  });
-  await db.execute({ sql: 'DELETE FROM sessions WHERE user_id=?', args: [id] });
-  res.json({ ok: true });
-});
+$('rows').addEventListener('click', async e => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const act = btn.dataset.act;
 
-app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const r = await db.execute({ sql: 'SELECT is_admin FROM users WHERE id=?', args: [id] });
-  if (r.rows.length === 0) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
-  if (r.rows[0].is_admin) return res.status(400).json({ error: 'ลบแอดมินไม่ได้' });
-
-  await db.batch([
-    { sql: 'DELETE FROM sessions WHERE user_id=?', args: [id] },
-    { sql: 'DELETE FROM payment_intents WHERE user_id=?', args: [id] },
-    { sql: 'DELETE FROM users WHERE id=?', args: [id] },
-  ]);
-  res.json({ ok: true });
-});
-
-// ============================================================
-//  ✅ Reset IDs — เรียง 1,2,3,4,...
-// ============================================================
-app.post('/api/admin/reset-ids', requireAdmin, async (_req, res) => {
   try {
-    const r = await db.execute(
-      `SELECT id, username FROM users ORDER BY id ASC`
-    );
-
-    if (r.rows.length === 0) {
-      return res.json({ ok: true, msg: 'ไม่มีผู้ใช้', count: 0 });
+    if (act === 'approve') {
+      if (!confirm('อนุมัติการชำระเงินให้ผู้ใช้รายนี้?')) return;
+      await api('POST', `/api/admin/users/${id}/approve-payment`);
+      toast('อนุมัติแล้ว');
+      await loadUsers();
+    } else if (act === 'slip') {
+      openSlipModal(id, btn.dataset.user);
+    } else if (act === 'ext') {
+      const h = Number(btn.dataset.h);
+      await api('POST', `/api/admin/users/${id}/extend`, { hours: h });
+      toast(`ปรับเวลา ${h > 0 ? '+' : ''}${h} ชม. สำเร็จ`);
+      await loadUsers();
+    } else if (act === 'time') {
+      const u = adminUsers.find(x => x.id === id);
+      openSetTimeModal(u);
+    } else if (act === 'pass') {
+      const p = prompt('รหัสผ่านใหม่ (อย่างน้อย 4 ตัวอักษร):');
+      if (!p || p.length < 4) return;
+      await api('POST', `/api/admin/users/${id}/password`, { password: p });
+      toast('ตั้งรหัสผ่านใหม่สำเร็จ');
+    } else if (act === 'del') {
+      const name = btn.dataset.name;
+      if (!confirm(`ลบบัญชี "${name}" ?`)) return;
+      await api('DELETE', `/api/admin/users/${id}`);
+      toast('ลบบัญชีสำเร็จ');
+      await loadUsers();
     }
-
-    const users = r.rows.map(u => ({ id: Number(u.id), username: u.username }));
-    const updates = [];
-    for (let i = 0; i < users.length; i++) {
-      const expectedId = i + 1;
-      if (users[i].id !== expectedId) {
-        updates.push({ oldId: users[i].id, newId: expectedId });
-      }
-    }
-
-    if (updates.length === 0) {
-      return res.json({ ok: true, msg: 'ID เรียงถูกต้องอยู่แล้ว', count: 0 });
-    }
-
-    // Step 1: ย้าย id ติดลบชั่วคราว
-    for (const { oldId } of updates) {
-      const tempId = -oldId;
-      await db.execute({ sql: 'UPDATE users SET id=? WHERE id=?', args: [tempId, oldId] });
-      await db.execute({ sql: 'UPDATE sessions SET user_id=? WHERE user_id=?', args: [tempId, oldId] });
-      await db.execute({ sql: 'UPDATE payment_intents SET user_id=? WHERE user_id=?', args: [tempId, oldId] });
-    }
-
-    // Step 2: ย้ายจากติดลบ → ค่าจริง
-    for (const { oldId, newId } of updates) {
-      const tempId = -oldId;
-      await db.execute({ sql: 'UPDATE users SET id=? WHERE id=?', args: [newId, tempId] });
-      await db.execute({ sql: 'UPDATE sessions SET user_id=? WHERE user_id=?', args: [newId, tempId] });
-      await db.execute({ sql: 'UPDATE payment_intents SET user_id=? WHERE user_id=?', args: [newId, tempId] });
-    }
-
-    // Step 3: reset sequence
-    const maxR = await db.execute('SELECT MAX(id) AS max_id FROM users');
-    const maxId = Number(maxR.rows[0]?.max_id || 0);
-
-    try {
-      await db.execute({ sql: `DELETE FROM sqlite_sequence WHERE name='users'` });
-      await db.execute({
-        sql: `INSERT INTO sqlite_sequence (name, seq) VALUES ('users', ?)`,
-        args: [maxId],
-      });
-    } catch (e) {
-      console.warn('reset sequence:', e.message);
-    }
-
-    console.log(`✅ Reset IDs สำเร็จ: ${updates.length} users`);
-    res.json({ ok: true, msg: `เรียง ID ใหม่ ${updates.length} รายการ`, count: updates.length });
-  } catch (e) {
-    console.error('reset-ids error:', e);
-    res.status(500).json({ error: 'Reset ID ไม่สำเร็จ: ' + e.message });
+  } catch (err) {
+    toast(err.message);
   }
 });
 
 // ============================================================
-//  ✅ Auto-expire + Auto-cleanup
+//  Slip viewer
 // ============================================================
-setInterval(async () => {
+let currentSlipList = [];
+async function openSlipModal(userId, username) {
+  $('slipImg').src = '';
+  $('slipThumbs').style.display = 'none';
+  $('slipThumbs').innerHTML = '';
+  $('modalSlip').classList.add('show');
+
   try {
-    const now = Date.now();
+    const slips = await api('GET', `/api/admin/users/${userId}/slips`);
+    currentSlipList = (slips || []).filter(s => s.slip_image_url);
 
-    // 1) Expire pending
-    await db.execute({
-      sql: `UPDATE payment_intents SET status='expired'
-            WHERE status='pending' AND expires_at < ?`,
-      args: [now],
-    });
-
-    // 2) ลบ user ไม่จ่ายภายใน 15 นาที
-    const unpaidCutoff = now - (UNPAID_DELETE_MIN * 60 * 1000);
-    const unpaidList = await db.execute({
-      sql: `SELECT id, username FROM users
-            WHERE is_admin = 0
-              AND payment_status != 'paid'
-              AND created_at < ?`,
-      args: [unpaidCutoff],
-    });
-    for (const u of unpaidList.rows) {
-      const uid = Number(u.id);
-      console.log(`🗑️ ลบ user (ไม่จ่าย ${UNPAID_DELETE_MIN} นาที): ${u.username} (id=${uid})`);
-      await db.execute({ sql: 'DELETE FROM sessions WHERE user_id=?', args: [uid] });
-      await db.execute({ sql: 'DELETE FROM payment_intents WHERE user_id=?', args: [uid] });
-      await db.execute({ sql: 'DELETE FROM users WHERE id=?', args: [uid] });
+    if (!currentSlipList.length) {
+      toast('ผู้ใช้รายนี้ยังไม่เคยอัพสลิป');
+      $('modalSlip').classList.remove('show');
+      return;
     }
 
-    // 3) ลบ user หมดอายุเกิน 7 วัน
-    const expiredCutoff = now - (EXPIRED_DELETE_DAYS * 24 * 60 * 60 * 1000);
-    const expiredList = await db.execute({
-      sql: `SELECT id, username FROM users
-            WHERE is_admin = 0
-              AND payment_status = 'paid'
-              AND expires_at < ?`,
-      args: [expiredCutoff],
-    });
-    for (const u of expiredList.rows) {
-      const uid = Number(u.id);
-      console.log(`🗑️ ลบ user (หมดอายุเกิน ${EXPIRED_DELETE_DAYS} วัน): ${u.username} (id=${uid})`);
-      await db.execute({ sql: 'DELETE FROM sessions WHERE user_id=?', args: [uid] });
-      await db.execute({ sql: 'DELETE FROM payment_intents WHERE user_id=?', args: [uid] });
-      await db.execute({ sql: 'DELETE FROM users WHERE id=?', args: [uid] });
-    }
+    const toAbs = (url) => {
+      if (!url) return '';
+      if (url.startsWith('http')) return url;
+      return window.__API_BASE__ + url;
+    };
 
+    $('slipImg').src = toAbs(currentSlipList[0].slip_image_url);
+
+    if (currentSlipList.length > 1) {
+      $('slipThumbs').style.display = 'flex';
+      $('slipThumbs').innerHTML = currentSlipList.map((sl, i) => `
+        <img src="${escapeHtml(toAbs(sl.slip_image_url))}"
+             class="${i === 0 ? 'active' : ''}"
+             data-url="${escapeHtml(toAbs(sl.slip_image_url))}"
+             alt="สลิป ${i + 1}">
+      `).join('');
+    }
   } catch (e) {
-    console.error('auto-cleanup error:', e);
+    toast('โหลดสลิปไม่ได้: ' + e.message);
+    $('modalSlip').classList.remove('show');
   }
-}, 60 * 1000);
+}
 
-// ============================================================
-//  Health
-// ============================================================
-app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
-
-// ============================================================
-//  Fallback + Error
-// ============================================================
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+function closeSlipModal() {
+  $('modalSlip').classList.remove('show');
+  $('slipImg').src = '';
+  currentSlipList = [];
+}
+$('slipClose').onclick = closeSlipModal;
+$('modalSlip').onclick = e => {
+  if (e.target === $('modalSlip')) closeSlipModal();
+};
+$('slipThumbs').addEventListener('click', e => {
+  const img = e.target.closest('img[data-url]');
+  if (!img) return;
+  $('slipImg').src = img.dataset.url;
+  $('slipThumbs').querySelectorAll('img').forEach(x => x.classList.remove('active'));
+  img.classList.add('active');
 });
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ error: 'server error' });
+let modalUserId = null;
+function openSetTimeModal(u) {
+  modalUserId = u.id;
+  const d = new Date(Math.max(Date.now(), u.expires_at));
+  const pad = n => String(n).padStart(2, '0');
+  $('mTime').value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  $('modalSetTime').classList.add('show');
+}
+$('mCancel').onclick = () => $('modalSetTime').classList.remove('show');
+$('modalSetTime').onclick = e => {
+  if (e.target === $('modalSetTime')) $('modalSetTime').classList.remove('show');
+};
+$('mOk').onclick = async () => {
+  const v = $('mTime').value.trim();
+  if (!v) return toast('กรุณากรอกวันและเวลา');
+
+  let normalized = v.includes('T') ? v : v.replace(' ', 'T');
+  if (/T\d{2}:\d{2}$/.test(normalized)) normalized += ':00';
+  let t = Date.parse(normalized);
+  if (isNaN(t)) t = Date.parse(v);
+  if (isNaN(t)) return toast('รูปแบบเวลาไม่ถูกต้อง เช่น 2025-12-31 23:59');
+
+  if (t < Date.now()) {
+    if (!confirm('เวลาที่ตั้งอยู่ในอดีต ผู้ใช้จะไม่สามารถใช้งานได้\nต้องการดำเนินการต่อหรือไม่?'))
+      return;
+  }
+
+  try {
+    await api('POST', `/api/admin/users/${modalUserId}/set-time`, { expires_at: t });
+    toast('ตั้งเวลาสำเร็จ');
+    $('modalSetTime').classList.remove('show');
+    await loadUsers();
+  } catch (e) {
+    toast('ผิดพลาด: ' + e.message);
+  }
+};
+
+$('btnRefresh').onclick = () => loadUsers();
+$('searchBox').oninput = renderUsers;
+
+// ✅ ตรวจ ID กระโดด
+function checkIdGaps() {
+  const el = $('idWarning');
+  if (!el) return;
+  if (!adminUsers.length) { el.style.display = 'none'; return; }
+
+  const ids = adminUsers.map(u => u.id).sort((a, b) => a - b);
+  let hasGaps = false;
+  for (let i = 1; i < ids.length; i++) {
+    if (ids[i] !== ids[i - 1] + 1) { hasGaps = true; break; }
+  }
+  if (ids[0] !== 1) hasGaps = true;
+
+  el.style.display = hasGaps ? 'inline' : 'none';
+}
+
+// ✅ ปุ่ม Reset ID
+$('btnResetIds').onclick = async () => {
+  if (!confirm('🔄 เรียง ID ใหม่ให้เป็น 1, 2, 3, 4, ... ?\n\n⚠️ User ที่ login อยู่จะต้อง login ใหม่')) return;
+  const btn = $('btnResetIds');
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังเรียง...';
+  try {
+    const j = await api('POST', '/api/admin/reset-ids');
+    toast(j.msg || 'เรียง ID สำเร็จ');
+    await loadUsers();
+  } catch (e) {
+    toast('ผิดพลาด: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 เรียง ID';
+  }
+};
+
+$('btnAdminLogout').onclick = async () => {
+  clearInterval(adminTimer);
+  stopCountdownTimer();
+  await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+  window.setToken('');
+  me = null;
+  showView('view-auth');
+  setAuthMsg('');
+};
+
+// ============================================================
+//  Manual
+// ============================================================
+function openManual() { $('modalManual').classList.add('show'); }
+function closeManual() { $('modalManual').classList.remove('show'); }
+$('btnManualAuth').onclick = openManual;
+$('btnManualApp').onclick = openManual;
+$('manualClose').onclick = closeManual;
+$('manualOk').onclick = closeManual;
+$('modalManual').onclick = e => {
+  if (e.target === $('modalManual')) closeManual();
+};
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if ($('modalSlip').classList.contains('show')) closeSlipModal();
+    if ($('modalManual').classList.contains('show')) closeManual();
+    if ($('modalSetTime').classList.contains('show')) $('modalSetTime').classList.remove('show');
+  }
 });
 
 // ============================================================
-//  Start
+//  Boot
 // ============================================================
-initDB()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`🚀 drice-miter → http://localhost:${PORT}`);
-      console.log(`🌐 NODE_ENV = ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🧹 Auto-cleanup: ไม่จ่าย ${UNPAID_DELETE_MIN} นาที / หมดอายุ ${EXPIRED_DELETE_DAYS} วัน`);
-    });
-  })
-  .catch((e) => {
-    console.error('❌ initDB ล้มเหลว:', e);
-    process.exit(1);
-  });
+(async function boot() {
+  try {
+    console.log('🌐 [boot] API_BASE =', window.__API_BASE__);
+    console.log('🌐 [boot] token =', (window.getToken() || '').slice(0, 20) || '(none)');
+
+    const r = await fetch('/api/me');
+    console.log('🌐 [boot] /api/me status:', r.status);
+
+    if (!r.ok) { showView('view-auth'); return; }
+
+    const raw = await r.text();
+    console.log('🌐 [boot] /api/me body:', raw);
+
+    let data;
+    try { data = JSON.parse(raw); }
+    catch {
+      showView('view-auth');
+      return;
+    }
+
+    if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+      showView('view-auth');
+      return;
+    }
+
+    await afterLogin(data);
+  } catch (e) {
+    console.error('❌ boot error:', e);
+    showView('view-auth');
+  }
+})();
+
+})();
+</script>
+</body>
+</html>
