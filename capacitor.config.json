@@ -1,0 +1,28 @@
+{
+  "appId": "com.drice.miter",
+  "appName": "drice-miter",
+  "webDir": "public",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#0b0b0b",
+    "useLegacyBridge": false
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#ffc400"
+    },
+    "Camera": {
+      "androidPermission": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
+    }
+  }
+}
