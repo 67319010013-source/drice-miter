@@ -5,9 +5,24 @@
   "description": "ระบบตรวจจับเสียงตามย่านความถี่ + สมาชิก 24 ชม. + QR 500 บาท + ตรวจสลิป",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:build": "npx cap sync android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/camera": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/haptics": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.0",
+    "@capacitor/network": "^7.0.0",
+    "@capacitor/preferences": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0",
+    "@capacitor/toast": "^7.0.0",
     "@libsql/client": "^0.14.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
