@@ -787,9 +787,10 @@ app.post('/api/admin/users/:id/approve-payment', requireAdmin, async (req, res) 
           WHERE user_id=? AND status='pending'`,
     args: [now, id],
   });
+  // ✅ UPDATE session แทน DELETE — user ไม่ต้อง login ใหม่
   await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [id],
+    sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
+    args: [newExp, id],
   });
 
   res.json({ ok: true, expires_at: Number(newExp) });
@@ -812,10 +813,11 @@ app.post('/api/admin/users/:id/extend', requireAdmin, async (req, res) => {
   const base = Math.max(Date.now(), curExp);
   const newExp = Math.max(Date.now(), base + hours * 3600 * 1000);
 
-  await db.execute({ sql: 'UPDATE users SET expires_at=? WHERE id=?', args: [newExp, id] });
+    await db.execute({ sql: 'UPDATE users SET expires_at=? WHERE id=?', args: [newExp, id] });
+  // ✅ UPDATE session แทน DELETE
   await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [id],
+    sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
+    args: [newExp, id],
   });
 
   res.json({ ok: true, expires_at: Number(newExp) });
@@ -851,9 +853,11 @@ app.post('/api/admin/users/:id/set-time', requireAdmin, async (req, res) => {
       args: [expires_at, id],
     });
   }
+    // ✅ UPDATE session ตาม expires_at ใหม่
+  // ถ้าตั้งเป็นอดีต → session จะหมดอายุทันที
   await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [id],
+    sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
+    args: [expires_at, id],
   });
 
   res.json({ ok: true, expires_at: Number(expires_at) });
@@ -1005,6 +1009,28 @@ setInterval(async () => {
     console.error('auto-cleanup error:', e);
   }
 }, 60 * 1000);
+
+// ============================================================
+//  ✅ Lightweight status check (poll ทุก 15 วิ)
+// ============================================================
+app.get('/api/me/status', async (req, res) => {
+  const u = await getUserFromReq(req);
+  if (!u) return res.status(401).json({ alive: false });
+
+  const isAdmin = u.is_admin === 1;
+  const isExpired = !isAdmin && u.payment_status === 'paid' && Date.now() > u.expires_at;
+  const isUnpaid = !isAdmin && u.payment_status !== 'paid';
+
+  res.json({
+    alive: true,
+    username: u.username,
+    is_admin: isAdmin ? 1 : 0,
+    expires_at: Number(u.expires_at) || 0,
+    expired: isExpired,
+    unpaid: isUnpaid,
+  });
+});
+
 
 // ============================================================
 //  Health
