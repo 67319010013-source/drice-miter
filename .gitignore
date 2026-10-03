@@ -1,7 +1,50 @@
+# Dependencies
 node_modules/
+
+# Environment
 .env
 .env.local
+.env.*.local
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Slips (user uploads — ไม่ควร push)
+public/slips/*
+!public/slips/.gitkeep
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# Capacitor / Android build
+android/.gradle/
+android/build/
+android/app/build/
+android/app/release/
+android/local.properties
+android/.idea/
+android/capacitor-cordova-android-plugins/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/src/main/res/xml/config.xml
+
+# Capacitor
+.capacitor/
+
+# Node
+.npm/
+.yarn/
+
+# Render
+.render/
