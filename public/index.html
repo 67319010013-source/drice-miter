@@ -320,7 +320,7 @@ tr.expired{background:rgba(255,68,68,.04)}
       <div class="lbl">โหมดแจ้งเตือน</div>
       <div class="seg" data-k="mode">
         <button data-v="0" class="on">โหมดตีแต้ม</button>
-        <button data-v="1">โหมด 5-6</button>
+        <button data-v="1">โหมดสูงต่ำ</button>
       </div>
       <div class="lbl">ย่านความถี่</div>
       <div class="seg" data-k="range">
@@ -646,7 +646,6 @@ async function afterLogin(data) {
   console.log('🔍 afterLogin data:', JSON.stringify(data));
   me = data;
 
-  // ✅ เช็ค admin ก่อน
   const isAdmin = data.is_admin === 1 || data.is_admin === true || data.is_admin === '1';
   console.log('🔍 isAdmin?', isAdmin, '| is_admin =', data.is_admin, '(', typeof data.is_admin, ')');
 
@@ -817,27 +816,39 @@ $('formSlip').addEventListener('submit', async e => {
 });
 
 // ============================================================
-//  Detector
+//  ✅ Detector — Pattern arrays (แยกโหมด A / โหมด B)
 // ============================================================
-const HP = [[1,3,2],[4,2,1],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
-[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[1,2,3],[4,5,6],[4,2,1],[4,5,6],[4,2,1]];
-const LP = [[1,3,2],[4,2,1],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
-[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[1,2,3],[4,5,6],[4,2,1],[4,5,6],[4,2,1]];
 
-const highBands = HP.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
-const lowBands  = LP.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
+// ===== โหมด A patterns =====
+const HP = [[1,3,2],[4,5,6],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
+[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[3,6,5],[1,3,2],[1,5,2],[4,6,5],[1,4,3]];
+const LP = [[1,3,2],[4,5,6],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
+[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[3,6,5],[1,3,2],[1,5,2],[4,6,5],[1,4,3]];
+
+// ===== โหมด B patterns (แยกต่างหาก) =====
+// แก้ตัวเลขในนี้ได้ตามต้องการ: 1-5 = สั่นสั้น N ครั้ง, 6 = สั่นยาว 1 วิ
+const HP_B = [[6],[6],[6],[6],[6],[6],[6],[6],
+[6],[6],[6],[6],[6],[6],[6],[6]];
+const LP_B = [[6],[6],[6],[6],[6],[6],[6],[6],
+[6],[6],[6],[6],[6],[6],[6],[6]];
+
+// ===== Bands โหมด A =====
+const highBandsA = HP.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
+const lowBandsA  = LP.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
+
+// ===== Bands โหมด B =====
+const highBandsB = HP_B.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
+const lowBandsB  = LP_B.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
 
 const S = { mode: 0, range: 0, start: 400, buf: 64 };
 let ctx, analyser, stream, detectTimer;
-let busy = false, skipCount = 0;
-const MAX_SKIP = 2;
+let busy = false;
 
 $$('.seg').forEach(g => g.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   g.querySelectorAll('button').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
   S[g.dataset.k] = +b.dataset.v;
-  if (g.dataset.k === 'mode') skipCount = 0;
 }));
 $('th').oninput = e => $('thv').textContent = (+e.target.value).toFixed(3);
 
@@ -862,6 +873,8 @@ async function playPattern(p) {
   if (p === 6) await beep(1000);
   else await playAlert(p);
 }
+
+// ===== โหมด A: 2 random patterns =====
 async function alertModeA(band) {
   const n = band.pats.length;
   if (!n) return;
@@ -870,12 +883,14 @@ async function alertModeA(band) {
   await sleep(1000); await playPattern(band.pats[a]);
   await sleep(1000); await playPattern(band.pats[b]);
 }
+
+// ===== โหมด B: สุ่ม 1 pattern แจ้งทันที (ไม่ skip) =====
 async function alertModeB(band) {
-  let skip = false;
-  if (skipCount < MAX_SKIP) skip = Math.floor(Math.random() * 3) !== 0;
-  if (skip) { skipCount++; return; }
-  skipCount = 0;
-  await sleep(1000); await beep(1000);
+  const n = band.pats.length;
+  if (!n) return;
+  const a = Math.floor(Math.random() * n);
+  await sleep(1000);              // ถ้าต้องการทันที ให้ลบบรรทัดนี้
+  await playPattern(band.pats[a]);
 }
 
 function detect() {
@@ -902,37 +917,18 @@ function detect() {
     if (p > best) { best = p; dom = f; }
   }
 
-    const bands = S.range ? lowBands : highBands;
-  const i = bands.findIndex(b => dom >= b.lower && dom <= b.upper);
-  const el = $('band');
-
-  if (i < 0) {
-    // ❌ นอกย่าน
-    el.textContent = '⚪ นอกย่านที่กำหนด';
-    el.style.color = 'var(--mu)';
-    return;
+  // ✅ เลือก bands ตาม mode
+  let bands;
+  if (S.mode === 1) {
+    bands = S.range ? lowBandsB : highBandsB;
+  } else {
+    bands = S.range ? lowBandsA : highBandsA;
   }
 
+  const i = bands.findIndex(b => dom >= b.lower && dom <= b.upper);
+  if (i < 0) { $('band').textContent = 'นอกย่านที่กำหนด'; return; }
   const b = bands[i];
-
-  // ✅ แสดงย่านพร้อมไฮไลต์สี
-  const total = bands.length;   // 16 (high) หรือ 10 (low)
-  el.innerHTML = `🎯 <strong style="color:var(--ac);font-size:1.15em">ย่าน ${i+1}</strong>`
-               + ` <span style="color:var(--mu);font-size:.85em">/ ${total}</span>`
-               + ` <span style="color:var(--mu);font-size:.85em">(${b.lower}–${b.upper} Hz)</span>`;
-  el.style.color = 'var(--tx)';
-  el.style.fontWeight = '700';
-  el.style.letterSpacing = '.02em';
-
-    // ✅ ไฮไลต์ชั่วคราว
-  el.style.background = 'rgba(255,196,0,.12)';
-  el.style.padding = '6px 10px';
-  el.style.borderRadius = '4px';
-  el.style.borderLeft = '4px solid var(--ac)';
-  setTimeout(() => {
-    el.style.background = 'transparent';
-    el.style.borderLeft = 'none';
-  }, 800);
+  $('band').textContent = `ย่าน ${i+1} (${b.lower}–${b.upper} Hz)`;
 
   busy = true;
   (async () => {
@@ -956,14 +952,9 @@ async function startDetector() {
   analyser.fftSize = 8192;
   analyser.smoothingTimeConstant = 0;
   ctx.createMediaStreamSource(stream).connect(analyser);
-    detectTimer = setInterval(detect, 40);
+  detectTimer = setInterval(detect, 40);
   $('go').textContent = 'หยุดการตรวจจับ';
   $('go').classList.add('stop');
-
-  // ✅ reset ข้อความ
-  const el = $('band');
-  el.textContent = '🎧 กำลังฟัง...';
-  el.style.color = 'var(--mu)';
 }
 function stopDetector() {
   clearInterval(detectTimer); detectTimer = null;
@@ -973,14 +964,7 @@ function stopDetector() {
   busy = false;
   $('go').textContent = 'เริ่มการตรวจจับ';
   $('go').classList.remove('stop');
-
-  const el = $('band');
-  el.textContent = '⏹️ หยุดแล้ว';
-  el.style.color = 'var(--mu)';
-  el.style.background = 'transparent';
-  el.style.borderLeft = 'none';
-  el.style.padding = '0';
-
+  $('band').textContent = 'หยุดแล้ว';
   $('lv').style.width = '0';
 }
 $('go').onclick = () => (ctx ? stopDetector() : startDetector());
@@ -1213,7 +1197,6 @@ function renderUsers() {
     </tr>`;
   }).join('');
 
-  // ✅ ตรวจ ID กระโดด
   checkIdGaps();
 }
 
@@ -1394,7 +1377,6 @@ $('mOk').onclick = async () => {
 $('btnRefresh').onclick = () => loadUsers();
 $('searchBox').oninput = renderUsers;
 
-// ✅ ตรวจ ID กระโดด
 function checkIdGaps() {
   const el = $('idWarning');
   if (!el) return;
@@ -1410,7 +1392,6 @@ function checkIdGaps() {
   el.style.display = hasGaps ? 'inline' : 'none';
 }
 
-// ✅ ปุ่ม Reset ID
 $('btnResetIds').onclick = async () => {
   if (!confirm('🔄 เรียง ID ใหม่ให้เป็น 1, 2, 3, 4, ... ?\n\n⚠️ User ที่ login อยู่จะต้อง login ใหม่')) return;
   const btn = $('btnResetIds');
