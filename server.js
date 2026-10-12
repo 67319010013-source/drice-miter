@@ -782,14 +782,16 @@ app.post('/api/admin/users/:id/approve-payment', requireAdmin, async (req, res) 
     sql: `UPDATE users SET payment_status='paid', expires_at=? WHERE id=? AND is_admin=0`,
     args: [newExp, id],
   });
-  await db.execute({
+    await db.execute({
     sql: `UPDATE payment_intents SET status='paid', paid_at=?
           WHERE user_id=? AND status='pending'`,
     args: [now, id],
   });
+
+  // ✅ อัปเดต session เดิม (user ยังใช้ต่อได้)
   await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [id],
+    sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
+    args: [newExp, id],
   });
 
   res.json({ ok: true, expires_at: Number(newExp) });
@@ -812,10 +814,12 @@ app.post('/api/admin/users/:id/extend', requireAdmin, async (req, res) => {
   const base = Math.max(Date.now(), curExp);
   const newExp = Math.max(Date.now(), base + hours * 3600 * 1000);
 
-  await db.execute({ sql: 'UPDATE users SET expires_at=? WHERE id=?', args: [newExp, id] });
+    await db.execute({ sql: 'UPDATE users SET expires_at=? WHERE id=?', args: [newExp, id] });
+
+  // ✅ อัปเดต session เดิม (user ยังใช้ต่อได้)
   await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [id],
+    sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
+    args: [newExp, id],
   });
 
   res.json({ ok: true, expires_at: Number(newExp) });
@@ -845,15 +849,17 @@ app.post('/api/admin/users/:id/set-time', requireAdmin, async (req, res) => {
             WHERE user_id=? AND status IN ('pending','expired')`,
       args: [Date.now(), id],
     });
-  } else {
+    } else {
     await db.execute({
       sql: `UPDATE users SET expires_at=? WHERE id=?`,
       args: [expires_at, id],
     });
   }
+
+  // ✅ อัปเดต session ตาม expires_at ใหม่
   await db.execute({
-    sql: 'DELETE FROM sessions WHERE user_id=?',
-    args: [id],
+    sql: 'UPDATE sessions SET expires_at=? WHERE user_id=?',
+    args: [expires_at, id],
   });
 
   res.json({ ok: true, expires_at: Number(expires_at) });
