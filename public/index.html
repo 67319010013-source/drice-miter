@@ -327,14 +327,21 @@ tr.expired{background:rgba(255,68,68,.04)}
         <button data-v="0" class="on">จานเปิดตูด</button>
         <button data-v="1">จานปิดตูด</button>
       </div>
-            <div class="lbl">ฟังค์ชั่น</div>
-      <div class="seg" data-k="buf">
-        <button data-v="64" data-th="0.030" class="on">จานทั่วไป</button>
-        <button data-v="128" data-th="0.040">จานมังกร</button>
-        <button data-v="512" data-th="0.050">จานอีที</button>
+      <div class="lbl">ปรับระดับการรับ</div>
+      <div class="seg" data-k="start">
+        <button data-v="400" class="on">ปรับการรับ 1</button>
+        <button data-v="500">ปรับการรับ 2</button>
+        <button data-v="600">ปรับการรับ 3</button>
+        <button data-v="800">ปรับการรับ 4</button>
       </div>
-      <div class="lbl">จูนระบบจาน <span id="thv">0.030</span></div>
-      <input type="range" id="th" min="0.002" max="0.2" step="0.002" value="0.03">
+      <div class="lbl">ฟังค์ชั่น</div>
+      <div class="seg" data-k="buf">
+        <button data-v="64" class="on">แสตนดาร์ด</button>
+        <button data-v="128">เพิ่มความแม่นครั้งที่ 1</button>
+        <button data-v="512">เพิ่มความแม่นครั้งที่ 2</button>
+      </div>
+      <div class="lbl">จูนระบบจาน <span id="thv">0.020</span></div>
+      <input type="range" id="th" min="0.002" max="0.2" step="0.002" value="0.02">
       <div class="lbl">ช่องทางแจ้งเตือน</div>
       <label class="chk"><input type="checkbox" id="sSnd" checked> เสียง</label>
       <label class="chk"><input type="checkbox" id="sVib" checked> สั่น</label>
@@ -415,7 +422,6 @@ tr.expired{background:rgba(255,68,68,.04)}
 </div>
 
 <!-- Modal Manual -->
-<!-- ============ Modal Manual (หน้า Login) ============ -->
 <div id="modalManual" class="modal-back">
   <div class="modal" style="max-width:600px;max-height:85vh;overflow-y:auto">
     <h3 style="display:flex;justify-content:space-between;align-items:center">
@@ -437,86 +443,28 @@ tr.expired{background:rgba(255,68,68,.04)}
       </ol>
 
       <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
-        <strong style="color:var(--ac);letter-spacing:.05em">💳 การชำระเงิน</strong>
+        <strong style="color:var(--ac);letter-spacing:.05em">🎧 การใช้งานตรวจจับเสียง</strong>
       </div>
-      <ul style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
-        <li>ราคา <strong style="color:var(--ac)">500 บาท / 24 ชั่วโมง</strong></li>
-        <li>ชำระผ่าน QR Code → อัพโหลดสลิป → ใช้งานได้ทันที</li>
-        <li>หากไม่ชำระภายใน 15 นาที บัญชีจะถูกลบอัตโนมัติ</li>
-        <li>หากหมดอายุ ให้ Login ด้วยชื่อ/รหัสเดิม แล้วชำระเพื่อต่ออายุ</li>
-      </ul>
+      <ol style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
+        <li>กดปุ่ม <strong style="color:var(--ac)">"เริ่มการตรวจจับ"</strong> → อนุญาตไมค์</li>
+        <li>เลือกโหมด ย่านความถี่ ระดับการรับ ฟังก์ชั่น ตามต้องการ</li>
+        <li>ปรับ <strong style="color:var(--tx)">จูนระบบจาน</strong> — ค่าเริ่มต้น 0.020</li>
+        <li>เลือกช่องทางแจ้งเตือน: เสียง / สั่น / ไฟหน้าจอ</li>
+        <li>กด <strong style="color:var(--ac)">"หยุดการตรวจจับ"</strong> เพื่อหยุด</li>
+      </ol>
 
       <div style="border-left:3px solid var(--er);padding-left:12px;margin:16px 0 8px">
         <strong style="color:var(--er);letter-spacing:.05em">⚠️ ข้อควรระวัง</strong>
       </div>
       <ul style="margin:0 0 8px;padding-left:20px;color:var(--mu)">
-        <li>ห้ามใช้สลิปซ้ำ ระบบจะตรวจจับ QR Code และปฏิเสธทันที</li>
-        <li>สลิปต้องมียอดเงิน 500 บาท และชื่อผู้รับตรงกับร้าน</li>
-        <li>สลิปต้องไม่เก่าเกิน 15 นาที</li>
+        <li>ควรใช้ในที่เงียบเพื่อลดสัญญาณรบกวน</li>
+        <li>หากแจ้งเตือนบ่อยเกินไป ให้เพิ่มค่า Threshold</li>
+        <li>หมดอายุ → Login ชื่อ/พาส เดิมเพื่อสแกนจ่ายต่ออายุ</li>
       </ul>
     </div>
 
     <div class="row" style="margin-top:20px">
       <button class="btn" id="manualOk">รับทราบ</button>
-    </div>
-  </div>
-</div>
-
-<!-- ============ Modal Manual (หน้า App) ============ -->
-<div id="modalManualApp" class="modal-back">
-  <div class="modal" style="max-width:600px;max-height:85vh;overflow-y:auto">
-    <h3 style="display:flex;justify-content:space-between;align-items:center">
-      <span>🎧 คู่มือการใช้งานจับเสียง</span>
-      <button id="manualAppClose" style="background:none;border:none;color:var(--mu);font-size:1.5rem;cursor:pointer;line-height:1">×</button>
-    </h3>
-
-    <div style="font-size:.9rem;line-height:1.7;color:var(--tx)">
-      <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
-        <strong style="color:var(--ac);letter-spacing:.05em">🎛️ การตั้งค่าโหมด</strong>
-      </div>
-      <ul style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
-        <li><strong style="color:var(--tx)">โหมดตีแต้ม</strong> — ใช้สำหรับจับเสียงไฮโลแบบตีแต้ม</li>
-        <li><strong style="color:var(--tx)">โหมดสูงต่ำ</strong> — ใช้สำหรับจับเสียงไฮโลแบบสูงต่ำ</li>
-      </ul>
-
-      <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
-        <strong style="color:var(--ac);letter-spacing:.05em">📡 ย่านความถี่</strong>
-      </div>
-      <ul style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
-        <li><strong style="color:var(--tx)">จานเปิดตูด</strong> — ใช้ตรวจจับเสียงจากจานที่เปิดตูด</li>
-        <li><strong style="color:var(--tx)">จานปิดตูด</strong> — ใช้ตรวจจับเสียงจากจานที่ปิดตูด</li>
-      </ul>
-
-      <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
-        <strong style="color:var(--ac);letter-spacing:.05em">⚙️ ฟังค์ชั่น (จูนระบบจาน)</strong>
-      </div>
-      <ul style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
-        <li><strong style="color:var(--tx)">จานทั่วไป</strong> — ตั้งค่าจูนระบบจานเป็น <strong style="color:var(--ac)">0.030</strong></li>
-        <li><strong style="color:var(--tx)">จานมังกร</strong> — ตั้งค่าจูนระบบจานเป็น <strong style="color:var(--ac)">0.040</strong></li>
-        <li><strong style="color:var(--tx)">จานET</strong> — ตั้งค่าจูนระบบจานเป็น <strong style="color:var(--ac)">0.050</strong></li>
-      </ul>
-
-      <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
-        <strong style="color:var(--ac);letter-spacing:.05em">🔧 การปรับจูนระบบจาน</strong>
-      </div>
-      <ul style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
-        <li>สามารถเลื่อน Slider เพื่อปรับค่าได้ด้วยตนเอง (0.002 – 0.200)</li>
-        <li>ค่ามากขึ้น = ตรวจจับเสียงได้ไวขึ้น แต่เสี่ยงต่อสัญญาณรบกวน</li>
-        <li>ค่าน้อยลง = ตรวจจับเสียงได้ละเอียดขึ้น แต่ต้องอยู่ในที่เงียบ</li>
-      </ul>
-
-      <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
-        <strong style="color:var(--ac);letter-spacing:.05em">🔔 ช่องทางแจ้งเตือน</strong>
-      </div>
-      <ul style="margin:0 0 8px;padding-left:20px;color:var(--mu)">
-        <li><strong style="color:var(--tx)">เสียง</strong> — ส่งเสียงเตือนเมื่อจับเสียงได้</li>
-        <li><strong style="color:var(--tx)">สั่น</strong> — สั่นเครื่องเมื่อจับเสียงได้</li>
-        <li><strong style="color:var(--tx)">ไฟหน้าจอ</strong> — หน้าจอกะพริบเมื่อจับเสียงได้</li>
-      </ul>
-    </div>
-
-    <div class="row" style="margin-top:20px">
-      <button class="btn" id="manualAppOk">รับทราบ</button>
     </div>
   </div>
 </div>
@@ -872,10 +820,10 @@ $('formSlip').addEventListener('submit', async e => {
 // ============================================================
 
 // ===== โหมด A patterns =====
-const HP = [[1,3,2],[4,2,1],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
-[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[1,2,3],[4,5,6],[4,2,1],[4,5,6],[4,2,1]];
-const LP = [[1,3,2],[4,2,1],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
-[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[1,2,3],[4,5,6],[4,2,1],[4,5,6],[4,2,1]];
+const HP = [[1,3,2],[4,5,6],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
+[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[3,6,5],[1,3,2],[1,5,2],[4,6,5],[1,4,3]];
+const LP = [[1,3,2],[4,5,6],[1,2,3],[4,5,6],[1,4,5],[4,6,5],
+[1,3,2],[4,6,5],[1,3,2],[4,6,5],[4,1,5],[3,6,5],[1,3,2],[1,5,2],[4,6,5],[1,4,3]];
 
 // ===== โหมด B patterns (แยกต่างหาก) =====
 // แก้ตัวเลขในนี้ได้ตามต้องการ: 1-5 = สั่นสั้น N ครั้ง, 6 = สั่นยาว 1 วิ
@@ -901,17 +849,6 @@ $$('.seg').forEach(g => g.addEventListener('click', e => {
   g.querySelectorAll('button').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
   S[g.dataset.k] = +b.dataset.v;
-
-  // ✅ ถ้าเป็นปุ่มฟังค์ชั่น → อัปเดตค่าจูนระบบจาน
-  if (g.dataset.k === 'buf' && b.dataset.th) {
-    const thValue = parseFloat(b.dataset.th);
-    const thSlider = $('th');
-    const thLabel = $('thv');
-    if (thSlider) {
-      thSlider.value = thValue;
-      if (thLabel) thLabel.textContent = thValue.toFixed(3);
-    }
-  }
 }));
 $('th').oninput = e => $('thv').textContent = (+e.target.value).toFixed(3);
 
@@ -1483,44 +1420,23 @@ $('btnAdminLogout').onclick = async () => {
 };
 
 // ============================================================
-//  ✅ Manual — แยกหน้า Login และ หน้า App
+//  Manual
 // ============================================================
-function openManualAuth() { $('modalManual')?.classList.add('show'); }
-function closeManualAuth() { $('modalManual')?.classList.remove('show'); }
-function openManualApp() { $('modalManualApp')?.classList.add('show'); }
-function closeManualApp() { $('modalManualApp')?.classList.remove('show'); }
-
-// หน้า Login
-const btnManualAuth = $('btnManualAuth');
-if (btnManualAuth) btnManualAuth.onclick = openManualAuth;
-const manualClose = $('manualClose');
-if (manualClose) manualClose.onclick = closeManualAuth;
-const manualOk = $('manualOk');
-if (manualOk) manualOk.onclick = closeManualAuth;
-const modalManual = $('modalManual');
-if (modalManual) modalManual.onclick = e => {
-  if (e.target === $('modalManual')) closeManualAuth();
+function openManual() { $('modalManual').classList.add('show'); }
+function closeManual() { $('modalManual').classList.remove('show'); }
+$('btnManualAuth').onclick = openManual;
+$('btnManualApp').onclick = openManual;
+$('manualClose').onclick = closeManual;
+$('manualOk').onclick = closeManual;
+$('modalManual').onclick = e => {
+  if (e.target === $('modalManual')) closeManual();
 };
 
-// หน้า App
-const btnManualApp = $('btnManualApp');
-if (btnManualApp) btnManualApp.onclick = openManualApp;
-const manualAppClose = $('manualAppClose');
-if (manualAppClose) manualAppClose.onclick = closeManualApp;
-const manualAppOk = $('manualAppOk');
-if (manualAppOk) manualAppOk.onclick = closeManualApp;
-const modalManualApp = $('modalManualApp');
-if (modalManualApp) modalManualApp.onclick = e => {
-  if (e.target === $('modalManualApp')) closeManualApp();
-};
-
-// ESC key
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if ($('modalSlip')?.classList.contains('show')) closeSlipModal();
-    if ($('modalManual')?.classList.contains('show')) closeManualAuth();
-    if ($('modalManualApp')?.classList.contains('show')) closeManualApp();
-    if ($('modalSetTime')?.classList.contains('show')) $('modalSetTime').classList.remove('show');
+    if ($('modalSlip').classList.contains('show')) closeSlipModal();
+    if ($('modalManual').classList.contains('show')) closeManual();
+    if ($('modalSetTime').classList.contains('show')) $('modalSetTime').classList.remove('show');
   }
 });
 
