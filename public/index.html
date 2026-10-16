@@ -153,6 +153,77 @@ tr.expired{background:rgba(255,68,68,.04)}
 .slip-modal .slip-thumbs img{width:56px;height:56px;object-fit:cover;border-radius:4px;border:2px solid var(--bd);cursor:pointer;opacity:.55;transition:.15s}
 .slip-modal .slip-thumbs img.active{opacity:1;border-color:var(--ac)}
 
+  /* ===== Manual Modal (2 tabs) ===== */
+.manual-tab{
+  flex:1;padding:12px;font:inherit;font-size:.85rem;font-weight:600;
+  background:var(--card2);color:var(--mu);border:none;
+  border-bottom:3px solid transparent;cursor:pointer;
+  transition:.15s;
+}
+.manual-tab.on{
+  background:var(--card);color:var(--ac);
+  border-bottom-color:var(--ac);
+}
+.manual-tab:hover{color:var(--ac)}
+
+.m-section{margin-bottom:22px}
+.m-section:last-child{margin-bottom:0}
+
+.m-title{
+  font-size:.95rem;font-weight:700;color:var(--ac);
+  letter-spacing:.03em;margin-bottom:10px;
+  padding-left:10px;border-left:3px solid var(--ac);
+}
+
+.m-sub-title{
+  font-size:.85rem;font-weight:700;color:var(--tx);
+  margin:12px 0 6px;opacity:.9;
+}
+
+.m-list{margin:0;padding-left:22px;color:var(--mu)}
+.m-list li{margin-bottom:5px;line-height:1.7}
+.m-list li b{color:var(--tx);font-weight:600}
+.m-list .ac{color:var(--ac);font-weight:700}
+
+.m-sub{
+  margin:6px 0 6px 4px;padding-left:16px;list-style:circle;
+  color:var(--mu);font-size:.85rem;
+}
+.m-sub li{margin-bottom:3px}
+
+.m-warn{
+  background:#2a1010;color:#ff9b9b;border-left:3px solid var(--er);
+  padding:9px 12px;border-radius:3px;margin-top:10px;font-size:.83rem;
+}
+.m-info{
+  background:#1a1a0f;color:#e0d89e;border-left:3px solid var(--ac);
+  padding:9px 12px;border-radius:3px;margin-top:10px;font-size:.83rem;
+}
+
+.m-table{
+  width:100%;border-collapse:collapse;margin-top:8px;font-size:.83rem;
+  background:var(--card2);border-radius:4px;overflow:hidden;
+}
+.m-table th{
+  background:var(--card);color:var(--ac);font-size:.75rem;
+  padding:8px 10px;text-align:left;letter-spacing:.03em;
+  border-bottom:1px solid var(--bd);
+}
+.m-table td{
+  padding:8px 10px;color:var(--mu);
+  border-bottom:1px solid var(--bd);vertical-align:top;
+}
+.m-table td:first-child{color:var(--tx);font-weight:600;width:40%}
+.m-table tr:last-child td{border-bottom:none}
+
+@media (max-width:480px){
+  .m-table{font-size:.78rem}
+  .m-table th,.m-table td{padding:6px 8px}
+  .m-table td:first-child{width:45%}
+  .m-list{padding-left:18px}
+  .m-title{font-size:.88rem}
+}
+  
 /* Admin Table Responsive */
 .admin-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .admin-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--bd);border-radius:4px;overflow:hidden;font-size:.9rem}
@@ -223,7 +294,10 @@ tr.expired{background:rgba(255,68,68,.04)}
         <button type="submit" class="btn" id="btnReg">สมัครสมาชิก</button>
       </form>
 
-      <button id="btnManualAuth" class="btn sec" style="margin-top:12px">📘 คู่มือการใช้งาน</button>
+      <div style="display:flex;gap:8px;margin-top:12px">
+  <button id="btnManualAuth" class="btn sec" style="flex:1;font-size:.82rem">🔐 คู่มือเข้าสู่ระบบ</button>
+  <button id="btnManualApp"  class="btn sec" style="flex:1;font-size:.82rem">🎧 คู่มือใช้งานแอป</button>
+</div>
 
             <div class="note">
         สมาชิกใหม่ <strong style="color:var(--ac)">500 บาท / 24 ชั่วโมง</strong><br>
@@ -421,50 +495,194 @@ tr.expired{background:rgba(255,68,68,.04)}
   <div class="slip-thumbs" id="slipThumbs" style="display:none"></div>
 </div>
 
-<!-- Modal Manual -->
+<!-- Modal Manual — แยก 2 คู่มือ -->
 <div id="modalManual" class="modal-back">
-  <div class="modal" style="max-width:600px;max-height:85vh;overflow-y:auto">
-    <h3 style="display:flex;justify-content:space-between;align-items:center">
-      <span>📘 คู่มือการใช้งาน drice-miter</span>
-      <button id="manualClose" style="background:none;border:none;color:var(--mu);font-size:1.5rem;cursor:pointer;line-height:1">×</button>
-    </h3>
+  <div class="modal" style="max-width:640px;max-height:88vh;overflow-y:auto;padding:0">
 
-    <div style="font-size:.9rem;line-height:1.7;color:var(--tx)">
-      <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
-        <strong style="color:var(--ac);letter-spacing:.05em">🔐 การเข้าสู่ระบบ</strong>
-      </div>
-      <ol style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
-        <li>เปิดแอป <strong style="color:var(--tx)">drice-miter</strong> จะพบหน้าล็อกอิน</li>
-        <li>หากยังไม่มีบัญชี ให้กดแท็บ <strong style="color:var(--ac)">"สมัครสมาชิก"</strong></li>
-        <li>กรอก <strong style="color:var(--tx)">ชื่อผู้ใช้</strong> (3–32 ตัวอักษร) และ <strong style="color:var(--tx)">รหัสผ่าน</strong> (อย่างน้อย 4 ตัวอักษร)</li>
-        <li>กดปุ่ม <strong style="color:var(--ac)">"สมัครสมาชิก"</strong> ระบบจะพาไปหน้าชำระเงิน</li>
-        <li>สแกน QR จ่าย <strong style="color:var(--ac)">500 บาท</strong> แล้วอัพโหลดสลิป</li>
-        <li>รอระบบตรวจสอบสลิป (10–30 วินาที) เมื่อสำเร็จจะเข้าสู่หน้าตรวจเสียงอัตโนมัติ</li>
-      </ol>
-
-      <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
-        <strong style="color:var(--ac);letter-spacing:.05em">🎧 การใช้งานตรวจจับเสียง</strong>
-      </div>
-      <ol style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
-        <li>กดปุ่ม <strong style="color:var(--ac)">"เริ่มการตรวจจับ"</strong> → อนุญาตไมค์</li>
-        <li>เลือกโหมด ย่านความถี่ ระดับการรับ ฟังก์ชั่น ตามต้องการ</li>
-        <li>ปรับ <strong style="color:var(--tx)">จูนระบบจาน</strong> — ค่าเริ่มต้น 0.020</li>
-        <li>เลือกช่องทางแจ้งเตือน: เสียง / สั่น / ไฟหน้าจอ</li>
-        <li>กด <strong style="color:var(--ac)">"หยุดการตรวจจับ"</strong> เพื่อหยุด</li>
-      </ol>
-
-      <div style="border-left:3px solid var(--er);padding-left:12px;margin:16px 0 8px">
-        <strong style="color:var(--er);letter-spacing:.05em">⚠️ ข้อควรระวัง</strong>
-      </div>
-      <ul style="margin:0 0 8px;padding-left:20px;color:var(--mu)">
-        <li>ควรใช้ในที่เงียบเพื่อลดสัญญาณรบกวน</li>
-        <li>หากแจ้งเตือนบ่อยเกินไป ให้เพิ่มค่า Threshold</li>
-        <li>หมดอายุ → Login ชื่อ/พาส เดิมเพื่อสแกนจ่ายต่ออายุ</li>
-      </ul>
+    <!-- Header -->
+    <div style="position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--bd);padding:16px 20px;display:flex;justify-content:space-between;align-items:center;z-index:5">
+      <h3 style="margin:0;color:var(--ac);font-size:1rem">📘 คู่มือการใช้งาน drice-miter</h3>
+      <button id="manualClose" style="background:none;border:none;color:var(--mu);font-size:1.6rem;cursor:pointer;line-height:1;padding:0 4px">×</button>
     </div>
 
-    <div class="row" style="margin-top:20px">
-      <button class="btn" id="manualOk">รับทราบ</button>
+    <!-- Tabs -->
+    <div style="display:flex;border-bottom:1px solid var(--bd);position:sticky;top:57px;background:var(--card);z-index:4">
+      <button id="tabManualAuth" class="manual-tab on" data-target="auth">🔐 เข้าสู่ระบบ</button>
+      <button id="tabManualApp"  class="manual-tab"    data-target="app">🎧 ใช้งานแอป</button>
+    </div>
+
+    <!-- ========== TAB 1: AUTH ========== -->
+    <div id="manualAuth" class="manual-panel" style="padding:20px;font-size:.9rem;line-height:1.75;color:var(--tx)">
+
+      <div class="m-section">
+        <div class="m-title">1️⃣ สมัครสมาชิกใหม่</div>
+        <ol class="m-list">
+          <li>เปิดแอป <b>drice-miter</b> → จะพบหน้า Login</li>
+          <li>กดแท็บ <b class="ac">"สมัครสมาชิก"</b> ด้านบน</li>
+          <li>กรอก <b>ชื่อผู้ใช้</b> (3–32 ตัวอักษร, ใช้ได้: A-Z a-z 0-9 _ และภาษาไทย)</li>
+          <li>กรอก <b>รหัสผ่าน</b> (อย่างน้อย 4 ตัวอักษร)</li>
+          <li>กรอก <b>ยืนยันรหัสผ่าน</b> ให้ตรงกัน</li>
+          <li>กดปุ่ม <b class="ac">"สมัครสมาชิก"</b> → ระบบพาไปหน้าชำระเงินอัตโนมัติ</li>
+        </ol>
+        <div class="m-warn">⚠️ สมัครแล้วไม่ชำระภายใน <b>15 นาที</b> บัญชีจะถูกลบอัตโนมัติ</div>
+      </div>
+
+      <div class="m-section">
+        <div class="m-title">2️⃣ เข้าสู่ระบบ (สมาชิกเก่า)</div>
+        <ol class="m-list">
+          <li>กรอก <b>ชื่อผู้ใช้</b> และ <b>รหัสผ่าน</b> ที่สมัครไว้</li>
+          <li>กดปุ่ม <b class="ac">"เข้าสู่ระบบ"</b></li>
+          <li>ระบบจะพาไปหน้าที่เหมาะสมอัตโนมัติ:
+            <ul class="m-sub">
+              <li>ยังไม่จ่าย → หน้าชำระเงิน</li>
+              <li>หมดอายุ → หน้าต่ออายุ</li>
+              <li>ยังใช้งานได้ → หน้าแอปทันที</li>
+              <li>เป็น Admin → แผงควบคุมแอดมิน</li>
+            </ul>
+          </li>
+        </ol>
+      </div>
+
+      <div class="m-section">
+        <div class="m-title">3️⃣ ชำระเงิน 500 บาท</div>
+        <ol class="m-list">
+          <li>หน้าชำระเงินจะแสดง <b>QR Code</b> พร้อมยอด <b class="ac">500.00 บาท</b></li>
+          <li>เปิดแอปธนาคาร → สแกน QR → โอนเงิน <b>500 บาท</b></li>
+          <li>บันทึก <b>สลิป</b> ไว้ในเครื่อง</li>
+          <li>กลับมาแอป → กดปุ่ม <b class="ac">"📸 อัพโหลดสลิป"</b></li>
+          <li>เลือกไฟล์สลิป → กด <b class="ac">"🔍 ตรวจสอบสลิป"</b></li>
+          <li>รอระบบตรวจสอบ <b>10–30 วินาที</b> (ตรวจ QR + OCR)</li>
+          <li>สำเร็จ → เข้าหน้าแอปอัตโนมัติ ใช้งานได้ <b>24 ชั่วโมง</b></li>
+        </ol>
+        <div class="m-info">💡 มีเวลา <b>15 นาที</b> ในการชำระ + อัพสลิป<br>ถ้าหมดเวลา กด <b>"🔄 ขอเวลาใหม่"</b></div>
+        <div class="m-warn">⚠️ สลิปต้องมี: ยอด 500 บาท, ชื่อผู้รับ, QR Code, เวลาที่ไม่เก่าเกิน 15 นาที</div>
+      </div>
+
+      <div class="m-section">
+        <div class="m-title">4️⃣ ปัญหาที่พบบ่อย (Login)</div>
+        <table class="m-table">
+          <tr><th>อาการ</th><th>วิธีแก้</th></tr>
+          <tr><td>ชื่อผู้ใช้ถูกใช้แล้ว</td><td>เปลี่ยนชื่ออื่น</td></tr>
+          <tr><td>รหัสผ่านไม่ถูกต้อง</td><td>ตรวจ Caps Lock / ภาษาไทย-อังกฤษ</td></tr>
+          <tr><td>สลิปไม่ผ่าน</td><td>ตรวจยอด/ชื่อ/QR ให้ชัด, ถ่ายใหม่</td></tr>
+          <tr><td>หมดเวลา 15 นาที</td><td>กด "ขอเวลาใหม่"</td></tr>
+          <tr><td>หมดอายุ 24 ชม.</td><td>Login ใหม่ → ชำระต่อ</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- ========== TAB 2: APP ========== -->
+    <div id="manualApp" class="manual-panel" style="padding:20px;font-size:.9rem;line-height:1.75;color:var(--tx);display:none">
+
+      <div class="m-section">
+        <div class="m-title">1️⃣ เริ่มต้นใช้งาน</div>
+        <ol class="m-list">
+          <li>เข้าสู่ระบบสำเร็จ → จะเห็นหน้า <b>"ตรวจจับเสียงไฮโล"</b></li>
+          <li>กดปุ่ม <b class="ac">"เริ่มการตรวจจับ"</b> (ปุ่มสีเหลืองใหญ่)</li>
+          <li>อนุญาตให้ใช้ <b>ไมโครโฟน</b> เมื่อระบบถาม</li>
+          <li>กราฟเสียงจะเริ่มวิ่ง → พร้อมใช้งาน</li>
+          <li>กดปุ่มเดิมอีกครั้ง (จะเปลี่ยนเป็น <b>"หยุดการตรวจจับ"</b>) เพื่อหยุด</li>
+        </ol>
+      </div>
+
+      <div class="m-section">
+        <div class="m-title">2️⃣ อธิบายปุ่มและการตั้งค่า</div>
+
+        <div class="m-sub-title">🎛️ โหมดแจ้งเตือน</div>
+        <ul class="m-list">
+          <li><b>โหมดตีแต้ม</b> — แจ้งเตือน 2 จังหวะ (สุ่มจาก patterns)</li>
+          <li><b>โหมดสูงต่ำ</b> — แจ้งเตือน 1 จังหวะ (เร็ว กระชับ)</li>
+        </ul>
+
+        <div class="m-sub-title">📡 ย่านความถี่</div>
+        <ul class="m-list">
+          <li><b>จานเปิดตูด</b> — ตรวจจับย่าน <b>3200–4000 Hz</b></li>
+          <li><b>จานปิดตูด</b> — ตรวจจับย่าน <b>2500–3500 Hz</b></li>
+        </ul>
+
+        <div class="m-sub-title">🎚️ ปรับระดับการรับ</div>
+        <ul class="m-list">
+          <li><b>1</b> = เริ่มตรวจจับที่ 400 Hz (ไวสุด)</li>
+          <li><b>2</b> = 500 Hz</li>
+          <li><b>3</b> = 600 Hz</li>
+          <li><b>4</b> = 800 Hz (กรองเสียงรบกวนได้ดี)</li>
+        </ul>
+
+        <div class="m-sub-title">🎯 ฟังค์ชั่น (ความแม่นยำ)</div>
+        <ul class="m-list">
+          <li><b>แสตนดาร์ด</b> — เร็ว ประหยัดแบต</li>
+          <li><b>เพิ่มความแม่นครั้งที่ 1</b> — แม่นขึ้น</li>
+          <li><b>เพิ่มความแม่นครั้งที่ 2</b> — แม่นสุด (กินแบตมาก)</li>
+        </ul>
+
+        <div class="m-sub-title">🎚️ จูนระบบจาน</div>
+        <ul class="m-list">
+          <li>Slider ตั้งแต่ <b>0.002 – 0.2</b> (ค่าเริ่มต้น <b>0.020</b>)</li>
+          <li>ค่าน้อย = ไวมาก (ได้ยินเสียงเบาๆ ก็แจ้ง)</li>
+          <li>ค่ามาก = ต้องเสียงดังพอ (กรองเสียงรบกวน)</li>
+          <li>เส้นประสีเหลืองบนกราฟ = Threshold ปัจจุบัน</li>
+        </ul>
+
+        <div class="m-sub-title">🔔 ช่องทางแจ้งเตือน</div>
+        <ul class="m-list">
+          <li><b>เสียง</b> — บี๊บสั้น/ยาวตาม Pattern</li>
+          <li><b>สั่น</b> — สั่นเครื่อง (ใช้ได้ดีในที่เสียงดัง)</li>
+          <li><b>ไฟหน้าจอ</b> — หน้าจอกะพริบสีเหลือง</li>
+        </ul>
+      </div>
+
+      <div class="m-section">
+        <div class="m-title">3️⃣ ความหมายของเสียง/การสั่น</div>
+        <table class="m-table">
+          <tr><th>Pattern</th><th>ความหมาย</th></tr>
+          <tr><td>บี๊บ 1 ครั้ง</td><td>สัญญาณสั้น 1</td></tr>
+          <tr><td>บี๊บ 2 ครั้ง</td><td>สัญญาณสั้น 2</td></tr>
+          <tr><td>บี๊บ 3 ครั้ง</td><td>สัญญาณสั้น 3</td></tr>
+          <tr><td>บี๊บ 4 ครั้ง</td><td>สัญญาณสั้น 4</td></tr>
+          <tr><td>บี๊บ 5 ครั้ง</td><td>สัญญาณสั้น 5</td></tr>
+          <tr><td>บี๊บยาว 1 วินาที</td><td>สัญญาณยาว (Pattern 6)</td></tr>
+        </table>
+        <div class="m-info">💡 โหมดตีแต้ม → สุ่มแจ้ง 2 patterns ติดกัน / โหมดสูงต่ำ → แจ้ง 1 pattern</div>
+      </div>
+
+      <div class="m-section">
+        <div class="m-title">4️⃣ แถบสถานะด้านบน</div>
+        <ul class="m-list">
+          <li><b>ออนไลน์ / ออฟไลน์</b> — สถานะการเชื่อมต่อ</li>
+          <li><b>เวลาที่เหลือ</b> — นับถอยหลัง (สีเหลือง = &lt; 1 ชม.)</li>
+          <li><b>📘</b> — เปิดคู่มือนี้</li>
+          <li><b>ออก</b> — ออกจากระบบ</li>
+        </ul>
+      </div>
+
+      <div class="m-section">
+        <div class="m-title">5️⃣ เคล็ดลับการใช้งาน</div>
+        <ul class="m-list">
+          <li>วางโทรศัพท์ให้ไมค์หันเข้าหาแหล่งเสียง</li>
+          <li>ใช้ในที่เงียบ → ลด False Positive</li>
+          <li>ถ้าแจ้งเตือนบ่อยเกิน → เพิ่ม Threshold</li>
+          <li>ถ้าไม่ยอมแจ้ง → ลด Threshold หรือเพิ่ม "ปรับระดับการรับ"</li>
+          <li>ปิดการสั่นถ้าไม่จำเป็น → ประหยัดแบต</li>
+          <li>โหมดสูงต่ำเหมาะกับการเล่นเร็ว, โหมดตีแต้มเหมาะกับเก็บสถิติ</li>
+        </ul>
+      </div>
+
+      <div class="m-section">
+        <div class="m-title">6️⃣ ปัญหาที่พบบ่อย (App)</div>
+        <table class="m-table">
+          <tr><th>อาการ</th><th>วิธีแก้</th></tr>
+          <tr><td>ไม่ได้รับอนุญาตใช้ไมค์</td><td>ตั้งค่า → แอป → drice-miter → อนุญาตไมค์</td></tr>
+          <tr><td>แจ้งเตือนไม่หยุด</td><td>เพิ่มค่า Threshold</td></tr>
+          <tr><td>ไม่แจ้งเตือนเลย</td><td>ลด Threshold / ตรวจสอบการรับ</td></tr>
+          <tr><td>กราฟไม่วิ่ง</td><td>กดเริ่มการตรวจจับใหม่</td></tr>
+          <tr><td>เวลาไม่ตรง</td><td>รอ 15 วิ (sync กับ server)</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:16px 20px;border-top:1px solid var(--bd);display:flex;gap:8px">
+      <button class="btn" id="manualOk" style="flex:1">รับทราบ</button>
     </div>
   </div>
 </div>
@@ -1422,15 +1640,47 @@ $('btnAdminLogout').onclick = async () => {
 // ============================================================
 //  Manual
 // ============================================================
-function openManual() { $('modalManual').classList.add('show'); }
-function closeManual() { $('modalManual').classList.remove('show'); }
-$('btnManualAuth').onclick = openManual;
-$('btnManualApp').onclick = openManual;
-$('manualClose').onclick = closeManual;
-$('manualOk').onclick = closeManual;
-$('modalManual').onclick = e => {
+// ============================================================
+//  Manual — แยก 2 คู่มือ (auth / app)
+// ============================================================
+function openManual(which = 'auth') {
+  $('modalManual').classList.add('show');
+  switchManualTab(which);
+}
+function closeManual() {
+  $('modalManual').classList.remove('show');
+  switchManualTab('auth');   // reset กลับแท็บแรก
+}
+function switchManualTab(name) {
+  const isAuth = name === 'auth';
+  const tabAuth   = $('tabManualAuth');
+  const tabApp    = $('tabManualApp');
+  const panelAuth = $('manualAuth');
+  const panelApp  = $('manualApp');
+  if (!tabAuth || !tabApp || !panelAuth || !panelApp) return;
+
+  tabAuth.classList.toggle('on', isAuth);
+  tabApp.classList.toggle('on', !isAuth);
+  panelAuth.style.display = isAuth ? '' : 'none';
+  panelApp.style.display  = isAuth ? 'none' : '';
+  const modal = $('modalManual').querySelector('.modal');
+  if (modal) modal.scrollTop = 0;
+}
+
+// ปุ่มเปิดคู่มือ
+$('btnManualAuth')?.addEventListener('click', () => openManual('auth'));
+$('btnManualApp')?.addEventListener('click',  () => openManual('app'));
+
+// สลับแท็บ
+$('tabManualAuth')?.addEventListener('click', () => switchManualTab('auth'));
+$('tabManualApp')?.addEventListener('click',  () => switchManualTab('app'));
+
+// ปิด
+$('manualClose')?.addEventListener('click', closeManual);
+$('manualOk')?.addEventListener('click',    closeManual);
+$('modalManual')?.addEventListener('click', e => {
   if (e.target === $('modalManual')) closeManual();
-};
+});
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
