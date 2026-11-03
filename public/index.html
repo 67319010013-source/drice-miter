@@ -987,29 +987,37 @@ async function alertModeB(band) {
   await playPattern(band.pats[a]);
 }
 
-// ✅ โหมด 5-6: สุ่ม 1 pattern จาก HP_56 / LP_56
+// ✅ โหมด 5-6: สุ่ม 1 pattern แล้วเล่นเฉพาะตัวเลข 1-6 (ข้าม 0)
 async function alertMode56(band) {
   const n = band.pats.length;
   if (!n) return;
   const a = Math.floor(Math.random() * n);
   const pattern = band.pats[a]; // เช่น [6,0] หรือ [0,6]
+
+  // ✅ กรองเฉพาะตัวเลข 1-6 (ตัด 0 ออก)
+  const valid = pattern.filter(p => p >= 1 && p <= 6);
+  if (!valid.length) return;
+
   await sleep(1000);
-  for (const p of pattern) {
-    if (p === 0) await sleep(300);   // 0 = เว้นช่วง 300ms
-    else await playPattern(p);
+  for (const p of valid) {
+    await playPattern(p);   // เรียก playPattern ตามปกติ
   }
 }
 
-// ✅ โหมด 6-1: สุ่ม 1 pattern จาก HP_61 / LP_61
+// ✅ โหมด 6-1: สุ่ม 1 pattern แล้วเล่นเฉพาะตัวเลข 1-6 (ข้าม 0)
 async function alertMode61(band) {
   const n = band.pats.length;
   if (!n) return;
   const a = Math.floor(Math.random() * n);
   const pattern = band.pats[a]; // เช่น [6,1] หรือ [1,6]
+
+  // ✅ กรองเฉพาะตัวเลข 1-6 (ตัด 0 ออก)
+  const valid = pattern.filter(p => p >= 1 && p <= 6);
+  if (!valid.length) return;
+
   await sleep(1000);
-  for (const p of pattern) {
-    if (p === 0) await sleep(300);
-    else await playPattern(p);
+  for (const p of valid) {
+    await playPattern(p);
   }
 }
 
