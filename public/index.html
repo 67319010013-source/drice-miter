@@ -322,6 +322,7 @@ tr.expired{background:rgba(255,68,68,.04)}
   <button data-v="0" class="on">โหมดตีแต้ม</button>
   <button data-v="1">โหมด 5-6</button>
   <button data-v="2">โหมดสูงต่ำ</button>
+  <button data-v="3">โหมด 6-1</button>
 </div>
       <div class="lbl">ย่านความถี่</div>
       <div class="seg" data-k="range">
@@ -478,7 +479,8 @@ tr.expired{background:rgba(255,68,68,.04)}
       <ul style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
         <li><strong style="color:var(--tx)">โหมดตีแต้ม</strong> — ใช้สำหรับจับเสียงไฮโลแบบตีแต้ม</li>
         <li><strong style="color:var(--tx)">โหมดสูงต่ำ</strong> — ใช้สำหรับจับเสียงไฮโลแบบสูงต่ำ</li>
-        <li><strong style="color:var(--tx)">โหมด5-6</strong> — จับเสียงไฮโลแบบ56</li>
+        <li><strong style="color:var(--tx)">โหมด5-6</strong> — จับเสียงไฮโล 56</li>
+        <li><strong style="color:var(--tx)">โหมด 6-1</strong> — จับเสียงไฮโล 61</li>
       </ul>
 
       <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
@@ -892,6 +894,12 @@ const HP_56 = [[0],[6],[0],[6],[0],[6],[0],[6],
 const LP_56 = [[0],[6],[0],[6],[0],[6],[0],[6],
 [0],[6],[0],[6],[0],[6],[0],[0]];
 
+  // ===== โหมด 6-1 patterns (Pattern 1 = สั่นสั้น 1 ครั้ง) =====
+const HP_61 = [[1],[1],[1],[1],[1],[1],[1],[1],
+[1],[1],[1],[1],[1],[1],[1],[1]];
+const LP_61 = [[1],[1],[1],[1],[1],[1],[1],[1],
+[1],[1],[1],[1],[1],[1],[1],[1]];
+
 // ===== Bands โหมด A (ตีแต้ม) =====
 const highBandsA = HP.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
 const lowBandsA  = LP.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
@@ -903,6 +911,10 @@ const lowBandsB  = LP_B.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3
 // ===== Bands โหมด 5-6 =====
 const highBands56 = HP_56.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
 const lowBands56  = LP_56.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
+
+// ===== Bands โหมด 6-1 =====
+const highBands61 = HP_61.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
+const lowBands61  = LP_61.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
 
 const S = { mode: 0, range: 0, start: 400, buf: 64 };
 let ctx, analyser, stream, detectTimer;
@@ -973,6 +985,12 @@ async function alertMode56(band) {
   await playPattern(6);
 }
 
+// ✅ โหมด 6-1: เล่น Pattern 1 (สั่นสั้น 1 ครั้ง) ทันที
+async function alertMode61(band) {
+  await sleep(1000);
+  await playPattern(1);
+}
+
 function detect() {
   if (busy || !analyser || !ctx) return;
   const sr = ctx.sampleRate;
@@ -997,12 +1015,14 @@ function detect() {
     if (p > best) { best = p; dom = f; }
   }
 
-  // ✅ เลือก bands ตาม mode (0=ตีแต้ม, 1=5-6, 2=สูงต่ำ)
+    // ✅ เลือก bands ตาม mode (0=ตีแต้ม, 1=5-6, 2=สูงต่ำ, 3=6-1)
   let bands;
   if (S.mode === 1) {
     bands = S.range ? lowBands56 : highBands56;
   } else if (S.mode === 2) {
     bands = S.range ? lowBandsB : highBandsB;
+  } else if (S.mode === 3) {
+    bands = S.range ? lowBands61 : highBands61;
   } else {
     bands = S.range ? lowBandsA : highBandsA;
   }
@@ -1017,7 +1037,8 @@ function detect() {
     try {
       if (S.mode === 0)      await alertModeA(b);
       else if (S.mode === 1) await alertMode56(b);
-      else                   await alertModeB(b);
+      else if (S.mode === 2) await alertModeB(b);
+      else                   await alertMode61(b);
     }
     finally { await sleep(300); busy = false; }
   })();
