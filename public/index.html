@@ -873,107 +873,81 @@ $('formSlip').addEventListener('submit', async e => {
 });
 
 // ============================================================
-//  Detector — Pattern arrays + Bands (77 HIGH / 31 LOW)
+//  ✅ Detector — Pattern arrays (แยกโหมด A / โหมด B)
 // ============================================================
 
-// ===== Base Patterns โหมด A (ตีแต้ม) =====
-const HP_BASE = [
+// ===== โหมด A (ตีแต้ม) patterns =====
+const HP = [
   [1,2,3,4,5,6],[1,2,3,4,5,6],[1,2,3,4,5,6],[4,5,6,1,2,3],
   [1,2,3,4,5,6],[1,2,3,4,6,5],[1,3,2,4,5,6],[1,2,3,4,6,5],
   [1,3,2,4,5,6],[1,2,3,4,6,5],[4,5,6,1,2,3],[1,2,3,4,5,6],
   [1,3,2,4,5,6],[1,2,3,4,5,6],[1,2,3,4,6,5],[6,5,2,1,4,3]
 ];
-const LP_BASE = [
+const LP = [
   [1,2,3,4,5,6],[1,2,3,4,5,6],[1,2,3,4,5,6],[4,5,6,1,2,3],
   [1,2,3,4,5,6],[1,2,3,4,6,5],[1,3,2,4,5,6],[1,2,3,4,6,5],
   [1,3,2,4,5,6],[1,2,3,4,6,5],[4,5,6,1,2,3],[1,2,3,4,5,6],
   [1,3,2,4,5,6],[1,2,3,4,5,6],[1,2,3,4,6,5],[6,5,2,1,4,3]
 ];
-
-// ===== Base Patterns โหมด B (สูงต่ำ) =====
-const HP_B_BASE = [
+  
+// ===== โหมด B patterns (สูงต่ำ) — 2 รูปแบบต่อย่าน =====
+const HP_B = [
   [[2],[6]], [[6],[2]], [[2],[6]], [[6],[2]],
   [[2],[6]], [[6],[2]], [[2],[6]], [[6],[2]],
   [[2],[6]], [[6],[2]], [[2],[6]], [[6],[2]],
   [[2],[6]], [[2],[6]], [[6],[2]], [[2],[6]]
 ];
-const LP_B_BASE = [
+  
+const LP_B = [
   [[2],[6]], [[6],[2]], [[2],[6]], [[6],[2]],
   [[2],[6]], [[6],[2]], [[2],[6]], [[6],[2]],
   [[2],[6]], [[6],[2]], [[2],[6]], [[6],[2]],
   [[2],[6]], [[2],[6]], [[6],[2]], [[2],[6]]
 ];
 
-// ===== Base Patterns โหมด 5-6 =====
-const HP_56_BASE = [
+// ===== โหมด 5-6 patterns — 2 รูปแบบต่อย่าน =====
+const HP_56 = [
   [[6],[0]], [[6],[0]], [[6],[0]], [[0],[6]],
   [[0],[6]], [[6],[0]], [[6],[0]], [[0],[6]],
   [[6],[0]], [[0],[6]], [[0],[6]], [[0],[6]],
   [[6],[0]], [[0],[6]], [[6],[0]], [[6],[0]]
 ];
-const LP_56_BASE = [
+const LP_56 = [
   [[6],[0]], [[6],[0]], [[6],[0]], [[0],[6]],
   [[0],[6]], [[6],[0]], [[6],[0]], [[0],[6]],
   [[6],[0]], [[0],[6]], [[0],[6]], [[0],[6]],
   [[6],[0]], [[0],[6]], [[6],[0]], [[6],[0]]
 ];
 
-// ===== Base Patterns โหมด 6-1 =====
-const HP_61_BASE = [
+// ===== โหมด 6-1 patterns — 2 รูปแบบต่อย่าน =====
+const HP_61 = [
   [[6],[1]], [[6],[1]], [[6],[1]], [[1],[6]],
   [[1],[6]], [[6],[1]], [[6],[1]], [[1],[6]],
   [[6],[1]], [[1],[6]], [[1],[6]], [[1],[6]],
   [[6],[1]], [[1],[6]], [[6],[1]], [[6],[1]]
 ];
-const LP_61_BASE = [
+const LP_61 = [
   [[6],[1]], [[6],[1]], [[6],[1]], [[1],[6]],
   [[1],[6]], [[6],[1]], [[6],[1]], [[1],[6]],
   [[6],[1]], [[1],[6]], [[1],[6]], [[1],[6]],
   [[6],[1]], [[1],[6]], [[6],[1]], [[6],[1]]
 ];
 
-// ============================================================
-//  Helper: ขยาย Array ให้ครอบคลุม 77 / 31 ย่าน
-// ============================================================
-const HIGH_COUNT = 77;  // 3200–7000 Hz ขั้น 50 Hz
-const LOW_COUNT  = 31;  // 2000–3500 Hz ขั้น 50 Hz
-
-function buildPatterns(count, basePatterns) {
-  const result = [];
-  for (let i = 0; i < count; i++) {
-    const variants = [
-      basePatterns[i % basePatterns.length],
-      basePatterns[(i + 1) % basePatterns.length]
-    ];
-    result.push(variants);
-  }
-  return result;
-}
-
-// ===== Array ขนาด 77 / 31 =====
-const HP    = buildPatterns(HIGH_COUNT, HP_BASE);
-const LP    = buildPatterns(LOW_COUNT,  LP_BASE);
-const HP_B  = buildPatterns(HIGH_COUNT, HP_B_BASE);
-const LP_B  = buildPatterns(LOW_COUNT,  LP_B_BASE);
-const HP_56 = buildPatterns(HIGH_COUNT, HP_56_BASE);
-const LP_56 = buildPatterns(LOW_COUNT,  LP_56_BASE);
-const HP_61 = buildPatterns(HIGH_COUNT, HP_61_BASE);
-const LP_61 = buildPatterns(LOW_COUNT,  LP_61_BASE);
-
-// ============================================================
-//  Bands (77 HIGH / 31 LOW)
-// ============================================================
+// ===== Bands โหมด A (ตีแต้ม) =====
 const highBandsA = HP.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
-const lowBandsA  = LP.map((p, i) => ({ lower: 2000 + 50*i, upper: 2049 + 50*i, pats: p }));
+const lowBandsA  = LP.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
 
+// ===== Bands โหมด B (สูงต่ำ) =====
 const highBandsB = HP_B.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
-const lowBandsB  = LP_B.map((p, i) => ({ lower: 2000 + 50*i, upper: 2049 + 50*i, pats: p }));
+const lowBandsB  = LP_B.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
 
+// ===== Bands โหมด 5-6 =====
 const highBands56 = HP_56.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
-const lowBands56  = LP_56.map((p, i) => ({ lower: 2000 + 50*i, upper: 2049 + 50*i, pats: p }));
+const lowBands56  = LP_56.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
 
+// ===== Bands โหมด 6-1 =====
 const highBands61 = HP_61.map((p, i) => ({ lower: 3200 + 50*i, upper: 3249 + 50*i, pats: p }));
-const lowBands61  = LP_61.map((p, i) => ({ lower: 2000 + 50*i, upper: 2049 + 50*i, pats: p }));
+const lowBands61  = LP_61.map((p, i) => ({ lower: 2500 + 100*i, upper: i === 9 ? 3500 : 2599 + 100*i, pats: p }));
 
 const S = { mode: 0, range: 0, start: 400, buf: 64 };
 let ctx, analyser, stream, detectTimer;
@@ -1094,7 +1068,7 @@ function detect() {
   $('lv').style.width = Math.min(100, rms / 0.2 * 100) + '%';
   if (rms < +$('th').value) return;
 
-  const end = S.range ? 3500 : 7000;
+  const end = S.range ? 3500 : 4000;
   let best = 0, dom = 0;
   for (let f = S.start; f <= end; f += 10) {
     const c = 2 * Math.cos(2 * Math.PI * f / sr);
