@@ -126,6 +126,12 @@ tr.expired{background:rgba(255,68,68,.04)}
 .stat{background:var(--card);border:1px solid var(--bd);border-radius:4px;padding:12px;text-align:center}
 .stat .num{font-size:1.5rem;font-weight:700;color:var(--ac);line-height:1.2}
 .stat .lbl2{font-size:.72rem;color:var(--mu);letter-spacing:.05em;margin-top:2px}
+
+/* ✅ ไฮไลต์ box ที่ต้องให้ความสนใจ */
+.stat.warn-box { border-color:#ff8c00; }
+.stat.warn-box .num { color:#ff8c00; }
+.stat.danger-box { border-color:var(--er); }
+.stat.danger-box .num { color:var(--er); }
 .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap}
 .toolbar strong{color:var(--ac);letter-spacing:.05em}
 
@@ -161,7 +167,7 @@ tr.expired{background:rgba(255,68,68,.04)}
   .admin-wrap .top { flex-direction: column; align-items: flex-start; gap: 8px; }
   .admin-wrap .top h1 { font-size: .95rem; }
   .admin-wrap .top .right { width: 100%; justify-content: flex-start; }
-    .summary {
+   .summary {
     grid-template-columns: repeat(2, 1fr);
     gap: 8px;
   }
@@ -225,13 +231,13 @@ tr.expired{background:rgba(255,68,68,.04)}
 
       <button id="btnManualAuth" class="btn sec" style="margin-top:12px">📘 คู่มือการใช้งาน</button>
 
-            <div class="note">
-        สมาชิกใหม่ <strong style="color:var(--ac)">500 บาท / 24 ชั่วโมง</strong><br>
-        ชำระผ่าน QR → อัพสลิป → ใช้งานได้ทันที<br>
-        <span style="color:var(--er);font-size:.72rem;display:block;margin-top:6px">
-          ⚠️ สมัครแล้วไม่ชำระภายใน 15 นาที บัญชีจะถูกลบอัตโนมัติ
-        </span>
-      </div>
+      <div class="note">
+  สมาชิกใหม่ <strong style="color:var(--ac)">500 บาท / 24 ชั่วโมง</strong><br>
+  ชำระผ่าน QR → อัพสลิป → ใช้งานได้ทันที<br>
+  <span style="color:var(--er);font-size:.72rem;display:block;margin-top:6px">
+    ⚠️ สมัครแล้วไม่ชำระภายใน 15 นาที บัญชีจะถูกลบอัตโนมัติ
+  </span>
+</div>
     </div>
   </div>
 </section>
@@ -245,8 +251,8 @@ tr.expired{background:rgba(255,68,68,.04)}
       <div id="payMsg" class="msg"></div>
 
       <div style="text-align:center;margin:16px 0;padding:16px;background:#fff;border-radius:6px">
-        <img id="qrImg" src="/qr-payment.png" alt="QR 500 บาท"
-             style="max-width:260px;width:100%;display:block;margin:0 auto">
+        <img id="qrImg" src="" alt="QR 500 บาท"
+     style="max-width:260px;width:100%;display:block;margin:0 auto">
       </div>
 
       <div style="text-align:center;font-size:.9rem;color:var(--mu);margin-bottom:14px">
@@ -312,24 +318,23 @@ tr.expired{background:rgba(255,68,68,.04)}
 
     <div class="card" style="margin-top:12px">
       <canvas id="wave"></canvas>
-      <div class="sub" id="band">ยังไม่เริ่ม</div>
       <div class="meter"><div id="lv"></div></div>
     </div>
 
     <div class="card">
       <div class="lbl">โหมดแจ้งเตือน</div>
-<div class="seg" data-k="mode">
-  <button data-v="0" class="on">โหมดตีแต้ม</button>
-  <button data-v="1">โหมด 5-6</button>
-  <button data-v="2">โหมดสูงต่ำ</button>
-  <button data-v="3">โหมด 6-1</button>
-</div>
+      <div class="seg" data-k="mode">
+        <button data-v="0" class="on">โหมดตีแต้ม</button>
+        <button data-v="1">โหมด 5-6</button>
+        <button data-v="2">โหมดสูงต่ำ</button>
+        <button data-v="3">โหมด 6-1</button>
+      </div>
       <div class="lbl">ย่านความถี่</div>
       <div class="seg" data-k="range">
         <button data-v="0" class="on">จานเปิดตูด</button>
         <button data-v="1">จานปิดตูด</button>
       </div>
-            <div class="lbl">ฟังค์ชั่น</div>
+      <div class="lbl">ฟังค์ชั่น</div>
       <div class="seg" data-k="buf">
       <button data-v="64" data-th="0.055" class="on">จานทั่วไป</button>
       <button data-v="128" data-th="0.073">จานมังกร</button>
@@ -364,19 +369,19 @@ tr.expired{background:rgba(255,68,68,.04)}
       <div class="stat"><div class="num" id="statExpired" style="color:var(--er)">0</div><div class="lbl2">หมดอายุ</div></div>
     </div>
 
-        <div class="toolbar">
-      <strong>รายชื่อผู้ใช้</strong>
-      <span id="idWarning" style="color:var(--er);font-size:.75rem;display:none">
-        ⚠️ ID มีเลขกระโดด — กดปุ่ม "เรียง ID" เพื่อแก้ไข
-      </span>
-      <div>
-        <input id="searchBox" placeholder="ค้นหาชื่อ..."
-               style="padding:6px 10px;background:var(--card2);color:var(--tx);border:1px solid var(--bd);border-radius:3px;font:inherit;font-size:.85rem">
-        <button class="btn sec sm" id="btnRefresh">รีเฟรช</button>
-        <button class="btn sm" id="btnResetIds"
-                style="background:#ff8c00;color:#000;border:none;font-weight:700">🔄 เรียง ID</button>
-      </div>
-    </div>
+    <div class="toolbar">
+  <strong>รายชื่อผู้ใช้</strong>
+  <span id="idWarning" style="color:var(--er);font-size:.75rem;display:none">
+    ⚠️ ID มีเลขกระโดด — กดปุ่ม "เรียง ID" เพื่อแก้ไข
+  </span>
+  <div>
+    <input id="searchBox" placeholder="ค้นหาชื่อ..."
+           style="padding:6px 10px;background:var(--card2);color:var(--tx);border:1px solid var(--bd);border-radius:3px;font:inherit;font-size:.85rem">
+    <button class="btn sec sm" id="btnRefresh">รีเฟรช</button>
+    <button class="btn sm" id="btnResetIds"
+            style="background:#ff8c00;color:#000;border:none;font-weight:700">🔄 เรียง ID</button>
+  </div>
+</div>
 
     <div class="admin-table-wrap">
       <table class="admin-table">
@@ -416,7 +421,6 @@ tr.expired{background:rgba(255,68,68,.04)}
   <div class="slip-thumbs" id="slipThumbs" style="display:none"></div>
 </div>
 
-<!-- Modal Manual -->
 <!-- ============ Modal Manual (หน้า Login) ============ -->
 <div id="modalManual" class="modal-back">
   <div class="modal" style="max-width:600px;max-height:85vh;overflow-y:auto">
@@ -489,7 +493,6 @@ tr.expired{background:rgba(255,68,68,.04)}
       <ul style="margin:0 0 16px;padding-left:20px;color:var(--mu)">
         <li><strong style="color:var(--tx)">จานเปิดตูด</strong> — ใช้ตรวจจับเสียงจากจานที่เปิดตูด</li>
         <li><strong style="color:var(--tx)">จานปิดตูด</strong> — ใช้ตรวจจับเสียงจากจานที่ปิดตูด</li>
-        
       </ul>
 
       <div style="border-left:3px solid var(--ac);padding-left:12px;margin:16px 0 8px">
@@ -695,6 +698,7 @@ $('formReg').addEventListener('submit', async e => {
 // ============================================================
 let me = null;
 let remainTimer = null;
+let meCheckTimer = null;
 let payTimer = null;
 let slipTimer = null;
 let currentRef = null;
@@ -703,6 +707,7 @@ async function afterLogin(data) {
   console.log('🔍 afterLogin data:', JSON.stringify(data));
   me = data;
 
+  // ✅ เช็ค admin ก่อน
   const isAdmin = data.is_admin === 1 || data.is_admin === true || data.is_admin === '1';
   console.log('🔍 isAdmin?', isAdmin, '| is_admin =', data.is_admin, '(', typeof data.is_admin, ')');
 
@@ -813,8 +818,14 @@ $('btnNewRef').onclick = async () => {
 };
 
 $('btnPayLogout').onclick = async () => {
-  clearInterval(payTimer); clearInterval(slipTimer);
-  await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+  clearInterval(payTimer); payTimer = null;
+  clearInterval(slipTimer); slipTimer = null;
+  try {
+    await Promise.race([
+      fetch('/api/logout', { method: 'POST' }),
+      new Promise(r => setTimeout(r, 2000)),
+    ]);
+  } catch {}
   window.setToken('');
   me = null;
   showView('view-auth');
@@ -873,7 +884,7 @@ $('formSlip').addEventListener('submit', async e => {
 });
 
 // ============================================================
-//  ✅ Detector — Pattern arrays (แยกโหมด A / โหมด B)
+//  Detector — Pattern arrays
 // ============================================================
 
 // ===== โหมด A patterns (HIGH 77 ช่อง) =====
@@ -1031,25 +1042,23 @@ const lowBands61  = LP_61.map((p, i) => ({ lower: 2000 + 50*i, upper: i === LP_6
 const S = { mode: 0, range: 0, start: 400, buf: 64 };
 let ctx, analyser, stream, detectTimer;
 let busy = false;
+let lastAlertAt = 0;
 
 $$('.seg').forEach(g => g.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   g.querySelectorAll('button').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
   S[g.dataset.k] = +b.dataset.v;
-
-  // ✅ ถ้าเป็นปุ่มฟังค์ชั่น → อัปเดตค่าจูนระบบจาน
-  if (g.dataset.k === 'buf' && b.dataset.th) {
-    const thValue = parseFloat(b.dataset.th);
-    const thSlider = $('th');
-    const thLabel = $('thv');
-    if (thSlider) {
-      thSlider.value = thValue;
-      if (thLabel) thLabel.textContent = thValue.toFixed(3);
-    }
-  }
+  pushSettingsToNative();   // ✅ sync ไป native
 }));
-$('th').oninput = e => $('thv').textContent = (+e.target.value).toFixed(3);
+$('th').oninput = e => {
+  $('thv').textContent = (+e.target.value).toFixed(3);
+  pushSettingsToNative();   // ✅ sync ไป native
+};
+['sSnd', 'sVib', 'sFls'].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener('change', pushSettingsToNative);
+});
 
 async function beep(ms) {
   if ($('sFls').checked) document.body.classList.add('flash');
@@ -1088,7 +1097,6 @@ async function playPattern(p) {
   }
 }
 
-// ===== โหมด A: 2 random patterns =====
 async function alertModeA(band) {
   const n = band.pats.length;
   if (!n) return;
@@ -1147,9 +1155,10 @@ function detect() {
   $('lv').style.width = Math.min(100, rms / 0.2 * 100) + '%';
   if (rms < +$('th').value) return;
 
+  const scanStart = S.range ? 2000 : 3200;
   const end = S.range ? 3500 : 7000;
   let best = 0, dom = 0;
-  for (let f = S.start; f <= end; f += 10) {
+  for (let f = scanStart; f <= end; f += 10) {
     const c = 2 * Math.cos(2 * Math.PI * f / sr);
     let s1 = 0, s2 = 0;
     for (let i = 0; i < N; i++) { const s0 = x[i] + c * s1 - s2; s2 = s1; s1 = s0; }
@@ -1174,6 +1183,11 @@ function detect() {
   const b = bands[i];
   $('band').textContent = '';
 
+    // ✅ เช็ค cooldown แบบ Java (2000ms)
+  const now = Date.now();
+  if (now - lastAlertAt < 2000) return;
+  lastAlertAt = now;
+
   busy = true;
   (async () => {
     try {
@@ -1182,14 +1196,96 @@ function detect() {
       else if (S.mode === 2) await alertModeB(b);
       else                   await alertMode61(b);
     }
-    finally { await sleep(300); busy = false; }
+    finally { busy = false; }   // ← ไม่ต้อง sleep(300) แล้ว
   })();
 }
 
+// ============================================================
+//  ฟังค์ชั่น → จูนระบบจาน (Sync)
+// ============================================================
+$$('.seg').forEach(g => g.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  g.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  S[g.dataset.k] = +b.dataset.v;
+
+  // ✅ ถ้าเป็นปุ่มฟังค์ชั่น → อัปเดตค่าจูนระบบจาน
+  if (g.dataset.k === 'buf' && b.dataset.th) {
+    const thValue = parseFloat(b.dataset.th);
+    const thSlider = $('th');
+    const thLabel = $('thv');
+    if (thSlider) {
+      thSlider.value = thValue;
+      if (thLabel) thLabel.textContent = thValue.toFixed(3);
+    }
+  }
+
+  pushSettingsToNative();
+}));
+
+// ============================================================
+//  Native Bridge helper
+// ============================================================
+function getFGS() {
+  return window.Capacitor?.Plugins?.MicForeground;
+}
+
+async function startNativeService() {
+  const FGS = getFGS();
+  if (!FGS?.start) return false;
+  try {
+    await FGS.start({
+      mode: S.mode,
+      range: S.range,
+      start: S.start,
+      buf: S.buf,
+      th: parseFloat($('th').value) || 0.038,
+      vib: $('sVib').checked,
+      snd: $('sSnd').checked,
+    });
+    return true;
+  } catch (e) {
+    console.warn('FGS start failed:', e);
+    return false;
+  }
+}
+
+async function stopNativeService() {
+  const FGS = getFGS();
+  if (!FGS?.stop) return;
+  try { await FGS.stop(); } catch {}
+}
+
+function pushSettingsToNative() {
+  const FGS = getFGS();
+  if (!FGS?.update) return;
+  FGS.update({
+    mode: S.mode,
+    range: S.range,
+    start: S.start,
+    buf: S.buf,
+    th: parseFloat($('th').value) || 0.038,
+    vib: $('sVib').checked,
+    snd: $('sSnd').checked,
+  }).catch(() => {});
+}
+
+// ============================================================
+//  Detector (ยังใช้ WebView เพื่อแสดงกราฟ)
+// ============================================================
 async function startDetector() {
+  // ✅ เริ่ม native service → ทำงานตอนจอดับ
+  await startNativeService();
+
+  // ✅ เปิดไมค์ใน WebView → แสดงกราฟ
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        sampleRate: 16000,   // ✅ บังคับ sample rate เดียวกับ native
+      },
     });
   } catch (e) {
     $('band').textContent = 'ไม่ได้รับอนุญาตใช้ไมค์';
@@ -1205,7 +1301,10 @@ async function startDetector() {
   $('go').textContent = 'หยุดการตรวจจับ';
   $('go').classList.add('stop');
 }
+
 function stopDetector() {
+  stopNativeService();
+
   clearInterval(detectTimer); detectTimer = null;
   if (stream) stream.getTracks().forEach(t => t.stop());
   if (ctx) ctx.close();
@@ -1216,6 +1315,7 @@ function stopDetector() {
   $('band').textContent = 'หยุดแล้ว';
   $('lv').style.width = '0';
 }
+
 $('go').onclick = () => (ctx ? stopDetector() : startDetector());
 
 const cv = $('wave'), g2 = cv.getContext('2d');
@@ -1264,18 +1364,54 @@ function draw() {
 draw();
 
 // ============================================================
-//  Remain timer
+//  Remain timer + auto logout (poll server ทุก 15 วิ)
 // ============================================================
+
 function startRemainTimer() {
   clearInterval(remainTimer);
+  clearInterval(meCheckTimer);
+  remainTimer = null;
+  meCheckTimer = null;
+
   let notified = false;
 
+  // ✅ Admin → ไม่ต้องนับเวลา
   if (me && (me.is_admin === 1 || me.is_admin === true || me.is_admin === '1')) {
     const el = $('remain');
     if (el) { el.textContent = 'ADMIN'; el.classList.remove('warn'); }
     return;
   }
 
+  const forceLogout = async (reason) => {
+    if (notified) return;
+    notified = true;
+
+    try { stopDetector(); } catch {}
+    clearInterval(remainTimer);
+    clearInterval(meCheckTimer);
+    clearInterval(payTimer);
+    clearInterval(slipTimer);
+    clearInterval(adminTimer);
+
+    try {
+      await Promise.race([
+        fetch('/api/logout', { method: 'POST' }),
+        new Promise(r => setTimeout(r, 1500)),
+      ]);
+    } catch {}
+
+    try { window.NativeBridge?.clearToken?.(); } catch {}
+    window.setToken('');
+    me = null;
+    currentRef = null;
+    adminUsers = [];
+
+    showView('view-auth');
+    setAuthMsg(reason || '⏰ หมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่', 'err');
+    toast('⏰ หมดเวลาการใช้งาน', 3000);
+  };
+
+  // ✅ Local countdown ทุก 1 วิ
   const update = () => {
     if (!me) return;
 
@@ -1288,44 +1424,74 @@ function startRemainTimer() {
 
     const ms = expiresAt - Date.now();
     const el = $('remain');
-    if (!el) return;
+    if (el) {
+      if (ms > 0) {
+        const d = Math.floor(ms / 86400000);
+        const h = Math.floor((ms % 86400000) / 3600000);
+        const m = Math.floor((ms % 3600000) / 60000);
+        const s = Math.floor((ms % 60000) / 1000);
 
-    if (ms > 0) {
-      const d = Math.floor(ms / 86400000);
-      const h = Math.floor((ms % 86400000) / 3600000);
-      const m = Math.floor((ms % 3600000) / 60000);
-      const s = Math.floor((ms % 60000) / 1000);
-
-      let txt;
-      if (d > 0)      txt = `${d}วัน ${h}ชม. ${m}นาที ${String(s).padStart(2,'0')}วิ`;
-      else if (h > 0) txt = `${h}ชม. ${m}นาที ${String(s).padStart(2,'0')}วิ`;
-      else            txt = `${m}นาที ${String(s).padStart(2,'0')}วิ`;
-      el.textContent = txt;
-      el.classList.toggle('warn', ms < 3600000);
-      return;
+        let txt;
+        if (d > 0)      txt = `${d}วัน ${h}ชม. ${m}นาที ${String(s).padStart(2,'0')}วิ`;
+        else if (h > 0) txt = `${h}ชม. ${m}นาที ${String(s).padStart(2,'0')}วิ`;
+        else            txt = `${m}นาที ${String(s).padStart(2,'0')}วิ`;
+        el.textContent = txt;
+        el.classList.toggle('warn', ms < 3600000);
+      } else {
+        el.textContent = 'หมดเวลา';
+        el.classList.add('warn');
+      }
     }
 
-    el.textContent = 'หมดเวลา';
-    el.classList.add('warn');
-    clearInterval(remainTimer);
-    if (notified) return;
-    notified = true;
-
-    stopDetector();
-    toast('⏰ หมดเวลาการใช้งานแล้ว กรุณาเข้าสู่ระบบเพื่อชำระเงินต่อ', 3000);
-
-    setTimeout(() => {
-      fetch('/api/logout', { method: 'POST' }).finally(() => {
-        me = null;
-        window.setToken('');
-        showView('view-auth');
-        setAuthMsg('⏰ หมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่', 'err');
-      });
-    }, 3000);
+    if (ms <= 0) {
+      forceLogout('⏰ หมดเวลาการใช้งานแล้ว กรุณาเข้าสู่ระบบใหม่เพื่อชำระเงินต่อ');
+    }
   };
 
   update();
   remainTimer = setInterval(update, 1000);
+
+  // ✅ Poll server ทุก 15 วิ (สำคัญมาก! ทำให้ admin แก้เวลา sync ทันที)
+  meCheckTimer = setInterval(async () => {
+    if (!me) return;
+    if (notified) return;
+
+    const activeView = document.querySelector('.view.active')?.id;
+    if (activeView === 'view-pay' || activeView === 'view-slip' || activeView === 'view-auth') return;
+
+    try {
+      const r = await fetch('/api/me/status');
+      if (!r.ok) {
+        forceLogout('⏰ เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+        return;
+      }
+      const d = await r.json();
+      if (!d.alive) {
+        forceLogout('⏰ เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+        return;
+      }
+
+      // ✅ Update expires_at จาก server (admin แก้เวลา → sync)
+      const newExp = Number(d.expires_at) || 0;
+      if (newExp !== Number(me.expires_at)) {
+        console.log('🔄 expires_at changed:', me.expires_at, '→', newExp);
+        me.expires_at = newExp;
+        if (newExp > 0 && Date.now() >= newExp) {
+          forceLogout('⏰ หมดเวลาการใช้งานแล้ว');
+        }
+      }
+
+      // ✅ Admin ลบสลิป → unpaid → logout
+      if (d.expired) {
+        forceLogout('⏰ หมดเวลาการใช้งานแล้ว');
+      }
+      if (d.unpaid) {
+        forceLogout('⚠️ การชำระเงินถูกยกเลิก กรุณาชำระใหม่');
+      }
+    } catch (e) {
+      // network error → รอ timer local ต่อไป
+    }
+  }, 15000);
 }
 
 function enterApp() {
@@ -1338,16 +1504,39 @@ function enterApp() {
 }
 
 async function doLogout() {
-  stopDetector();
-  clearInterval(remainTimer); clearInterval(payTimer); clearInterval(slipTimer);
-  await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+  // ✅ หยุดทุกอย่างก่อน (ห่อ try-catch กันค้าง)
+  try { stopDetector(); } catch (e) { console.warn('stopDetector:', e); }
+  try { stopCountdownTimer(); } catch (e) {}
+  clearInterval(remainTimer); remainTimer = null;
+  clearInterval(payTimer); payTimer = null;
+  clearInterval(slipTimer); slipTimer = null;
+  clearInterval(adminTimer); adminTimer = null;
+
+  // ✅ เรียก logout แบบ timeout 2 วิ (กันค้าง)
+  try {
+    await Promise.race([
+      fetch('/api/logout', { method: 'POST' }),
+      new Promise(r => setTimeout(r, 2000)),
+    ]);
+  } catch (e) {
+    console.warn('logout API:', e);
+  }
+
+  // ✅ ล้าง state ทั้งหมด
   window.setToken('');
   me = null;
+  currentRef = null;
+  adminUsers = [];
+
+  // ✅ กลับหน้า login
   showView('view-auth');
   setAuthMsg('');
-  $('lUser').value = ''; $('lPass').value = '';
-  $('rUser').value = ''; $('rPass').value = ''; $('rPass2').value = '';
+
+  // ✅ ล้าง input
+  const ids = ['lUser', 'lPass', 'rUser', 'rPass', 'rPass2'];
+  ids.forEach(id => { const el = $(id); if (el) el.value = ''; });
 }
+
 $('btnLogout').onclick = doLogout;
 
 // ============================================================
@@ -1435,7 +1624,7 @@ function renderUsers() {
           <button class="btn sm danger" data-act="del" data-id="${u.id}" data-name="${escapeHtml(u.username)}">ลบ</button>
         </div>`;
 
-        return `<tr class="${rowClass}" data-id="${u.id}">
+    return `<tr class="${rowClass}" data-id="${u.id}">
       <td data-label="ID">${u.id}</td>
       <td data-label="ชื่อผู้ใช้" class="col-user">${escapeHtml(u.username)}${adminTag}${payTag}</td>
       <td data-label="สมัครเมื่อ" class="col-created">${fmtThai(u.created_at)}</td>
@@ -1445,8 +1634,6 @@ function renderUsers() {
       <td data-label="จัดการ" class="col-actions">${actionBtns}</td>
     </tr>`;
   }).join('');
-
-  checkIdGaps();
 }
 
 function tickCountdowns() {
@@ -1626,50 +1813,24 @@ $('mOk').onclick = async () => {
 $('btnRefresh').onclick = () => loadUsers();
 $('searchBox').oninput = renderUsers;
 
-function checkIdGaps() {
-  const el = $('idWarning');
-  if (!el) return;
-  if (!adminUsers.length) { el.style.display = 'none'; return; }
-
-  const ids = adminUsers.map(u => u.id).sort((a, b) => a - b);
-  let hasGaps = false;
-  for (let i = 1; i < ids.length; i++) {
-    if (ids[i] !== ids[i - 1] + 1) { hasGaps = true; break; }
-  }
-  if (ids[0] !== 1) hasGaps = true;
-
-  el.style.display = hasGaps ? 'inline' : 'none';
-}
-
-$('btnResetIds').onclick = async () => {
-  if (!confirm('🔄 เรียง ID ใหม่ให้เป็น 1, 2, 3, 4, ... ?\n\n⚠️ User ที่ login อยู่จะต้อง login ใหม่')) return;
-  const btn = $('btnResetIds');
-  btn.disabled = true;
-  btn.textContent = '⏳ กำลังเรียง...';
-  try {
-    const j = await api('POST', '/api/admin/reset-ids');
-    toast(j.msg || 'เรียง ID สำเร็จ');
-    await loadUsers();
-  } catch (e) {
-    toast('ผิดพลาด: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🔄 เรียง ID';
-  }
-};
-
 $('btnAdminLogout').onclick = async () => {
-  clearInterval(adminTimer);
+  clearInterval(adminTimer); adminTimer = null;
   stopCountdownTimer();
-  await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+  try {
+    await Promise.race([
+      fetch('/api/logout', { method: 'POST' }),
+      new Promise(r => setTimeout(r, 2000)),
+    ]);
+  } catch {}
   window.setToken('');
   me = null;
+  adminUsers = [];
   showView('view-auth');
   setAuthMsg('');
 };
 
 // ============================================================
-//  ✅ Manual — แยกหน้า Login และ หน้า App
+//  Manual
 // ============================================================
 function openManualAuth() { $('modalManual')?.classList.add('show'); }
 function closeManualAuth() { $('modalManual')?.classList.remove('show'); }
@@ -1717,6 +1878,10 @@ document.addEventListener('keydown', e => {
   try {
     console.log('🌐 [boot] API_BASE =', window.__API_BASE__);
     console.log('🌐 [boot] token =', (window.getToken() || '').slice(0, 20) || '(none)');
+
+    // ✅ ตั้ง QR image URL
+    const qrImg = $('qrImg');
+    if (qrImg) qrImg.src = window.__API_BASE__ + '/qr-payment.png';
 
     const r = await fetch('/api/me');
     console.log('🌐 [boot] /api/me status:', r.status);
